@@ -9,22 +9,28 @@ export async function GET(req: NextRequest) {
     return new Response("Missing URL", { status: 400 });
   }
 
+  // ?size=N  — clamped to 64–800. Defaults to 300 (browse cards).
+  // Now Playing mode requests 600 for crisp Retina display.
+  const sizeParam = parseInt(searchParams.get("size") ?? "300");
+  const size = Math.min(Math.max(isNaN(sizeParam) ? 300 : sizeParam, 64), 800);
+  const quality = size > 300 ? 80 : 62;
+
   try {
     const response = await fetch(imageUrl);
     const buffer = await response.arrayBuffer();
 
     const resized = await sharp(Buffer.from(buffer))
-      .resize(300, 300, { fit: 'cover' })
-      .jpeg({ quality: 60 })
+      .resize(size, size, { fit: "cover" })
+      .jpeg({ quality })
       .toBuffer();
 
     return new Response(new Uint8Array(resized), {
       headers: {
         "Content-Type": "image/jpeg",
-        "Cache-Control": "public, max-age=86400"
-      }
+        "Cache-Control": "public, max-age=604800", // 7 days
+      },
     });
-  } catch (error) {
+  } catch {
     return new Response("Error processing image", { status: 500 });
   }
 }
