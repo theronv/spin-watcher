@@ -1,0 +1,16 @@
+{
+  "presets": [
+    [
+      "next/babel",
+      {
+        "preset-env": {
+          "targets": {
+            "android": "4.2"
+          },
+          "useBuiltIns": "entry",
+          "corejs": 3
+        }
+      }
+    ]
+  ]
+}
