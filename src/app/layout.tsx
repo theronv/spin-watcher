@@ -1,7 +1,3 @@
-import "promise-polyfill/src/polyfill";
-import "whatwg-fetch";
-import "core-js/stable";
-import "regenerator-runtime/runtime";
 import "./globals.css";
 import { Inter } from "next/font/google";
 import React from "react";
