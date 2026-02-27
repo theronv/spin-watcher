@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db, toRows } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const token = process.env.DISCOGS_TOKEN;
   const username = (process.env.DISCOGS_USER || '').replace(/[\u201C\u201D"]/g, '').trim();
