@@ -45,9 +45,9 @@ export async function GET() {
       };
     });
 
-  // Upsert all records
-  for (const r of releases) {
-    await db.execute({
+  // Upsert all records in a single batch (one network round-trip vs. N sequential calls)
+  await db.batch(
+    releases.map(r => ({
       sql: `INSERT INTO records (discogs_id, title, artist, cover_url)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(discogs_id) DO UPDATE SET
@@ -55,8 +55,9 @@ export async function GET() {
               artist    = excluded.artist,
               cover_url = excluded.cover_url`,
       args: [r.discogs_id, r.title, r.artist, r.cover_url],
-    });
-  }
+    })),
+    'write',
+  );
 
   // Return from DB so response matches the /api/records shape
   const result = await db.execute(
