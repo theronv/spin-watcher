@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { RefreshCw, Search, X, Disc3, ArrowLeft, Play } from "lucide-react";
+import { RefreshCw, Search, X, Disc3, ArrowLeft, Play, Square } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,6 +187,14 @@ export default function Home() {
   const exitNowPlaying = useCallback(() => {
     setEditingId(null);
     setIsPlaying(false);
+    setMode("browse");
+  }, []);
+
+  // Ends playback entirely — clears bar, resets state, returns to browse
+  const stopPlaying = useCallback(() => {
+    setNowPlayingId(null);
+    setIsPlaying(false);
+    setEditingId(null);
     setMode("browse");
   }, []);
 
@@ -507,21 +515,20 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Now Playing badge — top left */}
+                    {/* Now Playing indicator — subtle pulsing dot */}
                     {isNowPlay && (
-                      <div
+                      <span
+                        className="now-playing-dot"
                         style={{
-                          position: "absolute", top: 6, left: 6,
-                          display: "flex", alignItems: "center", gap: 4,
-                          background: GOLD, borderRadius: 999, padding: "3px 8px",
-                          pointerEvents: "none", zIndex: 5,
+                          position:     "absolute", top: 7, left: 7,
+                          width:        9, height: 9, borderRadius: "50%",
+                          background:   GOLD,
+                          border:       "1.5px solid rgba(10,8,5,0.75)",
+                          display:      "block",
+                          pointerEvents:"none",
+                          zIndex:       5,
                         }}
-                      >
-                        <span className="now-playing-dot" style={{ width: 5, height: 5, borderRadius: "50%", background: "#0c0a07", flexShrink: 0, display: "block" }} />
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.44rem", fontWeight: 700, color: "#0c0a07", letterSpacing: "0.15em" }}>
-                          NOW PLAYING
-                        </span>
-                      </div>
+                      />
                     )}
                   </div>
 
@@ -558,19 +565,22 @@ export default function Home() {
           )}
         </div>
 
-        {/* ── Premium Now Playing bar ─────────────────────────────────────── */}
+        {/* ── Now Playing bar — clickable, opens NP view ───────────────────── */}
         <div
+          onClick={() => nowPlayingRec && openNowPlaying(nowPlayingRec)}
           style={{
-            flexShrink:          0,
-            background:          "rgba(10,8,5,0.95)",
-            backdropFilter:      "blur(24px)",
-            WebkitBackdropFilter:"blur(24px)",
-            borderTop:           "1px solid rgba(201,168,76,0.1)",
+            flexShrink:           0,
+            background:           "rgba(10,8,5,0.95)",
+            backdropFilter:       "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            borderTop:            "1px solid rgba(201,168,76,0.1)",
+            cursor:               nowPlayingRec ? "pointer" : "default",
+            transition:           "background 0.2s",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px" }}>
 
-            {/* Thumbnail */}
+            {/* Thumbnail with pulse dot */}
             <div style={{ position: "relative", flexShrink: 0 }}>
               <div style={{
                 width: 46, height: 46, borderRadius: 10,
@@ -596,15 +606,14 @@ export default function Home() {
                   style={{
                     position: "absolute", top: -3, right: -3,
                     width: 8, height: 8, borderRadius: "50%",
-                    background: GOLD,
-                    border: "1.5px solid #0c0a07",
+                    background: GOLD, border: "1.5px solid #0c0a07",
                     display: "block",
                   }}
                 />
               )}
             </div>
 
-            {/* Track info + waveform */}
+            {/* Track info (title + artist only — waveform lives in NP view) */}
             <div style={{ flex: 1, minWidth: 0 }}>
               {nowPlayingRec ? (
                 <>
@@ -626,22 +635,12 @@ export default function Home() {
                       fontFamily:    "var(--font-mono)",
                       fontSize:      "0.58rem",
                       color:         "#5a4828",
-                      marginTop:     2,
+                      marginTop:     3,
                       letterSpacing: "0.07em",
                     }}
                   >
                     {nowPlayingRec.artist.toUpperCase()}
                   </p>
-                  {/* Waveform bars */}
-                  <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 18, marginTop: 5 }}>
-                    {WAVE_DURATIONS.map((dur, i) => (
-                      <div
-                        key={i}
-                        className="wave-bar"
-                        style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
-                      />
-                    ))}
-                  </div>
                 </>
               ) : (
                 <p style={{
@@ -655,8 +654,8 @@ export default function Home() {
               )}
             </div>
 
-            {/* Play count */}
-            {nowPlayData && (
+            {/* Play count + tap hint */}
+            {nowPlayData ? (
               <div style={{ flexShrink: 0, textAlign: "right" }}>
                 <p style={{
                   fontFamily: "var(--font-mono)",
@@ -669,15 +668,15 @@ export default function Home() {
                 </p>
                 <p style={{
                   fontFamily:    "var(--font-mono)",
-                  fontSize:      "0.48rem",
+                  fontSize:      "0.44rem",
                   color:         "#3a2c14",
                   marginTop:     2,
                   letterSpacing: "0.12em",
                 }}>
-                  PLAYS
+                  TAP TO EXPAND
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
           <div className="pb-safe" style={{ paddingTop: 0 }} />
         </div>
@@ -997,22 +996,23 @@ export default function Home() {
               flexDirection:  "column",
               alignItems:     "center",
               justifyContent: "center",
-              gap:            20,
+              gap:            18,
               padding:        "max(env(safe-area-inset-top), 12px) 28px 28px",
               opacity:        isPlaying ? 1 : 0,
               pointerEvents:  (mode === "now-playing" && isPlaying) ? "auto" : "none",
               transition:     `opacity 0.4s ${EASE}`,
             }}
           >
-            {/* Large album art */}
+            {/* Spinning vinyl disc */}
             <div
               style={{
-                width:        "min(88vw, 480px)",
-                height:       "min(88vw, 480px)",
-                borderRadius: 22,
+                width:        "min(72vw, 320px)",
+                height:       "min(72vw, 320px)",
+                borderRadius: "50%",
                 overflow:     "hidden",
-                background:   "rgba(255,255,255,0.03)",
-                boxShadow:    "0 36px 96px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.05)",
+                border:       "3px solid rgba(201,168,76,0.22)",
+                boxShadow:    `0 0 0 10px rgba(201,168,76,0.05), 0 30px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.04)`,
+                animation:    "vinyl-spin 4s linear infinite",
                 flexShrink:   0,
               }}
             >
@@ -1026,7 +1026,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* Now Playing indicator */}
+            {/* NOW PLAYING label */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span
                 className="now-playing-dot"
@@ -1048,12 +1048,12 @@ export default function Home() {
               <p
                 className="line-clamp-2"
                 style={{
-                  fontFamily: "var(--font-playfair)",
-                  fontSize:   "1.4rem",
-                  fontWeight: 900,
+                  fontFamily:    "var(--font-playfair)",
+                  fontSize:      "1.4rem",
+                  fontWeight:    900,
                   letterSpacing: "-0.01em",
-                  lineHeight: 1.2,
-                  color: "#f5f0e8",
+                  lineHeight:    1.2,
+                  color:         "#f5f0e8",
                 }}
               >
                 {viewingRecord?.title ?? ""}
@@ -1069,7 +1069,7 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Play count badge */}
+            {/* Play count */}
             <div style={{
               display:      "flex",
               alignItems:   "center",
@@ -1086,35 +1086,47 @@ export default function Home() {
                 {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
               </span>
             </div>
+
+            {/* Waveform bars */}
+            <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 22 }}>
+              {WAVE_DURATIONS.map((dur, i) => (
+                <div
+                  key={i}
+                  className="wave-bar"
+                  style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
         {/* ── Bottom nav bar (frosted) ── */}
         <div
           style={{
-            flexShrink:          0,
-            display:             "flex",
-            alignItems:          "center",
-            justifyContent:      "space-between",
-            padding:             "10px 18px",
-            background:          "rgba(10,8,5,0.9)",
-            backdropFilter:      "blur(20px)",
-            WebkitBackdropFilter:"blur(20px)",
-            borderTop:           "1px solid rgba(255,255,255,0.05)",
+            flexShrink:           0,
+            display:              "flex",
+            alignItems:           "center",
+            justifyContent:       "space-between",
+            padding:              "10px 18px",
+            background:           "rgba(10,8,5,0.9)",
+            backdropFilter:       "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderTop:            "1px solid rgba(255,255,255,0.05)",
           }}
         >
+          {/* ← Browse */}
           <button
             onClick={exitNowPlaying}
             style={{
-              display:     "flex",
-              alignItems:  "center",
-              gap:         8,
-              color:       "#4a3820",
-              background:  "transparent",
-              border:      "none",
-              cursor:      "pointer",
-              padding:     "6px 12px 6px 0",
-              transition:  "color 0.2s",
+              display:    "flex",
+              alignItems: "center",
+              gap:        8,
+              color:      "#4a3820",
+              background: "transparent",
+              border:     "none",
+              cursor:     "pointer",
+              padding:    "6px 12px 6px 0",
+              transition: "color 0.2s",
             }}
           >
             <ArrowLeft size={16} />
@@ -1123,22 +1135,50 @@ export default function Home() {
             </span>
           </button>
 
-          <button
-            onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
-            disabled={syncing}
-            aria-label="Sync with Discogs"
-            style={{
-              padding:    "6px",
-              color:      "#3a2c14",
-              background: "transparent",
-              border:     "none",
-              cursor:     "pointer",
-              opacity:    syncing ? 0.4 : 1,
-              transition: "color 0.2s",
-            }}
-          >
-            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {/* ■ Stop — ends playback, clears bar, returns to browse */}
+            {nowPlayingId && (
+              <button
+                onClick={stopPlaying}
+                style={{
+                  display:    "flex",
+                  alignItems: "center",
+                  gap:        6,
+                  color:      "#7a5a2a",
+                  background: "transparent",
+                  border:     "1px solid rgba(201,168,76,0.18)",
+                  borderRadius: 8,
+                  cursor:     "pointer",
+                  padding:    "5px 10px",
+                  transition: "color 0.2s, border-color 0.2s",
+                  fontFamily: "var(--font-mono)",
+                  fontSize:   "0.6rem",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                <Square size={11} fill="currentColor" strokeWidth={0} />
+                STOP
+              </button>
+            )}
+
+            {/* ⟳ Sync */}
+            <button
+              onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
+              disabled={syncing}
+              aria-label="Sync with Discogs"
+              style={{
+                padding:    "6px",
+                color:      "#3a2c14",
+                background: "transparent",
+                border:     "none",
+                cursor:     "pointer",
+                opacity:    syncing ? 0.4 : 1,
+                transition: "color 0.2s",
+              }}
+            >
+              <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
         <div className="pb-safe" style={{ background: "rgba(10,8,5,0.9)", paddingTop: 0 }} />
       </div>
