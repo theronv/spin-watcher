@@ -3,8 +3,6 @@
 import React, {
   useState,
   useEffect,
-  useLayoutEffect,
-  useRef,
   useMemo,
   useCallback,
 } from "react";
@@ -48,92 +46,51 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "recently_played", label: "Last Played" },
 ];
 
-const CARD_GAP        = 14;
-const SWIPE_THRESHOLD = 55;
-const EASE            = "cubic-bezier(0.4, 0, 0.2, 1)";
+const EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+const GOLD = "#C9A84C";
+
+// Durations for waveform bars — varied so they feel organic
+const WAVE_DURATIONS = [0.7, 0.5, 0.9, 0.6, 0.8, 0.55, 0.75, 0.95, 0.6, 0.85, 0.7, 0.5, 0.9, 0.65, 0.8, 0.55];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+}
+
+/** Every 9th card (0, 9, 18 …) gets the wide/hero treatment */
+function isWideCard(i: number): boolean {
+  return i % 9 === 0;
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Home() {
 
-  // ── App state
-  const [mode,           setMode]          = useState<AppMode>("browse");
-  const [records,        setRecords]        = useState<RecordData[]>([]);
-  const [plays,          setPlays]          = useState<Record<string, PlayData>>({});
-  const [loading,        setLoading]        = useState(true);
-  const [syncing,        setSyncing]        = useState(false);
-  const [activeIndex,    setActiveIndex]    = useState(0);
-  const [nowPlayingId,   setNowPlayingId]   = useState<string | null>(null);
-  const [viewingRecord,  setViewingRecord]  = useState<RecordData | null>(null);
-  const [sort,           setSort]           = useState<SortKey>("date_added");
-  const [filter,         setFilter]         = useState("");
+  // ── App state ──────────────────────────────────────────────────────────────
+  const [mode,          setMode]         = useState<AppMode>("browse");
+  const [records,       setRecords]      = useState<RecordData[]>([]);
+  const [plays,         setPlays]        = useState<Record<string, PlayData>>({});
+  const [loading,       setLoading]      = useState(true);
+  const [syncing,       setSyncing]      = useState(false);
+  const [nowPlayingId,  setNowPlayingId] = useState<string | null>(null);
+  const [viewingRecord, setViewingRecord]= useState<RecordData | null>(null);
+  const [sort,          setSort]         = useState<SortKey>("date_added");
+  const [filter,        setFilter]       = useState("");
 
-  // ── Inline play-count editor
+  // ── Inline play-count editor ───────────────────────────────────────────────
   const [editingId,  setEditingId]  = useState<string | null>(null);
   const [editValue,  setEditValue]  = useState("");
 
-  // ── Album details + playing state
+  // ── Album details + playing state ─────────────────────────────────────────
   const [albumDetails, setAlbumDetails] = useState<AlbumDetails | null>(null);
   const [albumLoading, setAlbumLoading] = useState(false);
   const [isPlaying,    setIsPlaying]    = useState(false);
 
-  // ── Carousel drag
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-
-  // ── Layout
-  const [cardWidth,     setCardWidth]     = useState(290);
-  const [containerW,    setContainerW]    = useState(390);
-  const [centerOffset,  setCenterOffset]  = useState(0); // px to shift carousel toward screen center
-
-  // ── Refs
-  const containerRef = useRef<HTMLDivElement>(null); // carousel zone (width measurement + pointer events)
-  const trackRef     = useRef<HTMLDivElement>(null);
-  const topRef       = useRef<HTMLDivElement>(null); // browse top chrome (header+search+sort)
-  const botRef       = useRef<HTMLDivElement>(null); // browse compact NP bar
-  const clickWasDrag = useRef(false);
-  const drag = useRef({ active: false, startX: 0, startY: 0, totalX: 0, moving: false });
-
-  // ── Measure carousel width ─────────────────────────────────────────────────
-
-  useEffect(() => {
-    const measure = () => {
-      if (!containerRef.current) return;
-      const w = containerRef.current.clientWidth;
-      setContainerW(w);
-      setCardWidth(Math.min(Math.floor(w * 0.78), 360));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
-
-  // ── Vertical centering: shift carousel up to compensate for top > bottom ──
-  // centerOffset = (topChrome - bottomChrome) / 2
-  // Applied as marginTop: -centerOffset on the carousel inner div.
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const th = topRef.current?.offsetHeight ?? 0;
-      const bh = botRef.current?.offsetHeight ?? 0;
-      setCenterOffset((th - bh) / 2);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (topRef.current)  ro.observe(topRef.current);
-    if (botRef.current)  ro.observe(botRef.current);
-    return () => ro.disconnect();
-  }, [loading]); // re-run after loading completes (refs are mounted then)
-
-  // Prevent passive touchmove from hijacking our horizontal drag
-  useEffect(() => {
-    const el = trackRef.current;
-    if (!el) return;
-    const onTouchMove = (e: TouchEvent) => { if (drag.current.moving) e.preventDefault(); };
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    return () => el.removeEventListener("touchmove", onTouchMove);
-  }, []);
+  // ── Hover (for frosted-glass card overlay) ────────────────────────────────
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // ── Data loading ───────────────────────────────────────────────────────────
 
@@ -152,13 +109,12 @@ export default function Home() {
       const res = await fetch("/api/sync");
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data)) { setRecords(data as RecordData[]); setActiveIndex(0); }
+      if (Array.isArray(data)) setRecords(data as RecordData[]);
     } finally {
       setSyncing(false);
     }
   }, []);
 
-  // Bootstrap: init → read Turso → only hit Discogs on first run (empty DB)
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -204,13 +160,7 @@ export default function Home() {
     });
   }, [records, plays, sort, filter]);
 
-  useEffect(() => {
-    setActiveIndex(prev => Math.max(0, Math.min(prev, displayed.length - 1)));
-  }, [displayed.length]);
-
-  useEffect(() => { setActiveIndex(0); }, [filter, sort]);
-
-  // ── Fetch album details when entering Now Playing ──────────────────────────
+  // ── Album details fetch ────────────────────────────────────────────────────
 
   useEffect(() => {
     if (mode !== "now-playing" || !viewingRecord) return;
@@ -240,17 +190,15 @@ export default function Home() {
     setIsPlaying(true);
   }, []);
 
-  // ── Mode navigation ────────────────────────────────────────────────────────
+  // ── Navigation ────────────────────────────────────────────────────────────
 
-  const enterNowPlaying = useCallback(() => {
-    const record = displayed[activeIndex];
-    if (!record) return;
+  const openNowPlaying = useCallback((record: RecordData) => {
     setEditingId(null);
     setViewingRecord(record);
     setIsPlaying(false);
     setAlbumDetails(null);
     setMode("now-playing");
-  }, [displayed, activeIndex]);
+  }, []);
 
   const exitNowPlaying = useCallback(() => {
     setEditingId(null);
@@ -269,13 +217,11 @@ export default function Home() {
     if (editingId === null) return;
     const id = editingId;
     const n  = Math.max(0, Math.min(9999, parseInt(editValue, 10) || 0));
-
     setEditingId(null);
     setPlays(prev => ({
       ...prev,
       [id]: { discogs_id: id, play_count: n, last_played: prev[id]?.last_played ?? null },
     }));
-
     const res = await fetch("/api/plays", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -290,56 +236,6 @@ export default function Home() {
     }
   }, [editingId, editValue]);
 
-  // ── Carousel drag ──────────────────────────────────────────────────────────
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (editingId) return;
-    drag.current = { active: true, startX: e.clientX, startY: e.clientY, totalX: 0, moving: false };
-    clickWasDrag.current = false;
-    (e.target as Element).setPointerCapture(e.pointerId);
-    setIsDragging(false);
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return;
-    const dx = e.clientX - drag.current.startX;
-    const dy = e.clientY - drag.current.startY;
-    drag.current.totalX = dx;
-    if (!drag.current.moving && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
-      drag.current.moving = true;
-      clickWasDrag.current = true;
-      setIsDragging(true);
-    }
-    if (drag.current.moving) setDragOffset(dx);
-  };
-
-  const onPointerUp = () => {
-    if (!drag.current.active) return;
-    drag.current.active = false;
-    setIsDragging(false);
-    setDragOffset(0);
-    const total = drag.current.totalX;
-    if (drag.current.moving) {
-      if (total < -SWIPE_THRESHOLD && activeIndex < displayed.length - 1) setActiveIndex(i => i + 1);
-      else if (total > SWIPE_THRESHOLD && activeIndex > 0) setActiveIndex(i => i - 1);
-    }
-  };
-
-  // Tap center card → enter Now Playing; tap non-center → navigate to it
-  const onCardClick = (record: RecordData, index: number) => {
-    if (clickWasDrag.current) return;
-    if (index !== activeIndex) setActiveIndex(index);
-    else enterNowPlaying();
-  };
-
-  // ── Carousel geometry ──────────────────────────────────────────────────────
-
-  const trackX = (containerW - cardWidth) / 2
-    - activeIndex * (cardWidth + CARD_GAP)
-    + dragOffset;
-
-  const carouselH = cardWidth + 40;
-
   // ── Derived ────────────────────────────────────────────────────────────────
 
   const nowPlayingRec = nowPlayingId ? records.find(r => r.discogs_id === nowPlayingId) : null;
@@ -351,9 +247,18 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-dvh bg-black text-zinc-600">
-        <Disc3 className="vinyl-spin mb-5" size={44} strokeWidth={1} />
-        <p className="text-[11px] tracking-[0.3em] uppercase">Syncing Collection</p>
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center",
+        justifyContent: "center", height: "100dvh", background: "#0c0a07",
+      }}>
+        <Disc3 className="vinyl-spin" size={40} strokeWidth={1}
+          style={{ color: "#3a2c14", marginBottom: 20 }} />
+        <p style={{
+          fontFamily: "var(--font-mono)", fontSize: "0.6rem",
+          letterSpacing: "0.3em", color: "#3a2c14", textTransform: "uppercase",
+        }}>
+          Syncing Collection
+        </p>
       </div>
     );
   }
@@ -361,394 +266,708 @@ export default function Home() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <main className="relative bg-black text-white overflow-hidden select-none" style={{ height: "100dvh" }}>
+    <main
+      className="select-none"
+      style={{ position: "relative", height: "100dvh", background: "#0c0a07", overflow: "hidden" }}
+    >
 
-      {/* ══════════════════════════════════════════════════════════════════════
+      {/* ════════════════════════════════════════════════════════════════════
           BROWSE MODE
-      ══════════════════════════════════════════════════════════════════════ */}
+      ════════════════════════════════════════════════════════════════════ */}
       <div
-        className="absolute inset-0 flex flex-col"
         style={{
+          position: "absolute", inset: 0, display: "flex", flexDirection: "column",
           opacity:       mode === "browse" ? 1 : 0,
-          transform:     mode === "browse" ? "translateY(0)" : "translateY(-12px)",
+          transform:     mode === "browse" ? "translateY(0)" : "translateY(-10px)",
           pointerEvents: mode === "browse" ? "auto" : "none",
           transition:    `opacity 0.32s ${EASE}, transform 0.32s ${EASE}`,
         }}
       >
-        {/* ── Top chrome (measured for centering) ── */}
-        <div ref={topRef} className="shrink-0">
 
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-safe pb-1">
-            <h1 className="text-[10px] font-semibold tracking-[0.35em] text-zinc-600 uppercase">
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div style={{ flexShrink: 0, padding: "max(env(safe-area-inset-top), 14px) 18px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12 }}>
+
+            {/* Logotype */}
+            <h1 style={{
+              fontFamily: "var(--font-playfair)",
+              fontWeight: 900,
+              fontSize: "0.9rem",
+              letterSpacing: "0.28em",
+              color: "#f5f0e8",
+              textTransform: "uppercase",
+              lineHeight: 1,
+            }}>
               SpinWatcher
             </h1>
-            {displayed.length > 0 && (
-              <p className="text-[10px] text-zinc-800 tabular-nums">
-                {activeIndex + 1} / {displayed.length}
-              </p>
-            )}
-            <button
-              onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
-              disabled={syncing}
-              aria-label="Sync with Discogs"
-              className="p-1.5 text-zinc-700 hover:text-zinc-400 transition-colors disabled:opacity-40"
-            >
-              <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-            </button>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Count badge */}
+              {displayed.length > 0 && (
+                <div style={{
+                  background: "rgba(201,168,76,0.08)",
+                  border: "1px solid rgba(201,168,76,0.22)",
+                  borderRadius: 999,
+                  padding: "3px 10px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}>
+                  <span style={{
+                    fontFamily: "var(--font-mono)", fontSize: "0.58rem",
+                    color: GOLD, letterSpacing: "0.05em", fontWeight: 700,
+                  }}>
+                    {displayed.length}
+                  </span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#3a2c14" }}>
+                    / {records.length}
+                  </span>
+                </div>
+              )}
+
+              {/* Sync */}
+              <button
+                onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
+                disabled={syncing}
+                aria-label="Sync with Discogs"
+                style={{
+                  padding: "6px", color: "#3a2c14", background: "transparent",
+                  border: "none", cursor: "pointer", transition: "color 0.2s",
+                  opacity: syncing ? 0.4 : 1,
+                }}
+              >
+                <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+              </button>
+            </div>
           </div>
 
-          {/* Search */}
-          <div className="px-4 pb-2">
-            <div className="flex items-center gap-2 bg-zinc-950 rounded-xl px-3 py-2.5 border border-zinc-800/60">
-              <Search size={13} className="text-zinc-600 shrink-0" />
+          {/* ── Search ─────────────────────────────────────────────────── */}
+          <div style={{ paddingBottom: 10 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: 12, padding: "8px 12px",
+            }}>
+              <Search size={13} style={{ color: "#3a2c14", flexShrink: 0 }} />
               <input
                 type="text"
                 value={filter}
                 onChange={e => setFilter(e.target.value)}
                 placeholder="Search artists or records…"
-                className="flex-1 bg-transparent text-sm text-zinc-300 placeholder-zinc-700 outline-none"
+                style={{
+                  flex: 1, background: "transparent",
+                  fontSize: "0.8rem", color: "#f5f0e8",
+                  border: "none", outline: "none",
+                  fontFamily: "var(--font-mono)",
+                }}
               />
               {filter && (
-                <button onClick={() => setFilter("")} className="text-zinc-600">
+                <button onClick={() => setFilter("")} style={{ color: "#3a2c14", background: "transparent", border: "none", cursor: "pointer" }}>
                   <X size={13} />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Sort pills */}
-          <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-hide">
-            {SORT_OPTIONS.map(opt => (
-              <button
-                key={opt.key}
-                onClick={() => setSort(opt.key)}
-                className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide transition-all ${
-                  sort === opt.key
-                    ? "bg-amber-500 text-black"
-                    : "bg-zinc-900 text-zinc-500 border border-zinc-800"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          {/* ── Sort pills ─────────────────────────────────────────────── */}
+          <div className="scrollbar-hide" style={{
+            display: "flex", gap: 6, paddingBottom: 12,
+            overflowX: "auto",
+          }}>
+            {SORT_OPTIONS.map(opt => {
+              const active = sort === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => setSort(opt.key)}
+                  style={{
+                    flexShrink: 0,
+                    padding: "4px 13px",
+                    borderRadius: 999,
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.6rem",
+                    letterSpacing: "0.08em",
+                    fontWeight: active ? 700 : 400,
+                    background: active ? GOLD : "transparent",
+                    color: active ? "#0c0a07" : "#4a3820",
+                    border: active ? `1px solid ${GOLD}` : "1px solid rgba(255,255,255,0.07)",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* ── Carousel zone: flex-1, inner div centered on screen via marginTop ── */}
+        {/* ── Album grid ──────────────────────────────────────────────────── */}
         <div
-          ref={containerRef}
-          className="flex-1 min-h-0 relative overflow-hidden flex items-center"
-          style={{ touchAction: "none" }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          className="scrollbar-hide"
+          style={{ flex: 1, overflowY: "auto", overscrollBehaviorY: "contain" }}
         >
-          {displayed.length === 0 ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-800">
-              <Disc3 size={48} strokeWidth={1} className="mb-3" />
-              <p className="text-sm">No records found</p>
-            </div>
-          ) : (
-            <div
-              style={{
-                position:   "relative",
-                width:      "100%",
-                height:     carouselH,
-                flexShrink: 0,
-                marginTop:  -centerOffset,
-              }}
-            >
-              <div
-                ref={trackRef}
-                style={{
-                  position:   "absolute",
-                  top:        0,
-                  bottom:     0,
-                  left:       0,
-                  display:    "flex",
-                  alignItems: "center",
-                  gap:        `${CARD_GAP}px`,
-                  transform:  `translateX(${trackX}px)`,
-                  transition: isDragging ? "none" : `transform 0.38s ${EASE}`,
-                  willChange: "transform",
-                }}
-              >
-                {displayed.map((record, i) => {
-                  const offset    = i - activeIndex;
-                  const absOffset = Math.abs(offset);
-                  const isActive  = offset === 0;
-                  const isNowPlay = record.discogs_id === nowPlayingId;
-                  const playData  = plays[record.discogs_id];
-                  const count     = playData?.play_count ?? 0;
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: 8,
+            padding: "4px 12px 24px",
+          }}>
+            {displayed.length === 0 ? (
+              <div style={{
+                gridColumn: "span 2", padding: "80px 20px",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+              }}>
+                <Disc3 size={40} strokeWidth={1} style={{ color: "#2a1f10" }} />
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#2a1f10", letterSpacing: "0.15em" }}>
+                  NO RECORDS FOUND
+                </p>
+              </div>
+            ) : (
+              displayed.map((record, i) => {
+                const wide      = isWideCard(i);
+                const isHero    = i === 0;
+                const isHovered = hoveredId === record.discogs_id;
+                const isNowPlay = record.discogs_id === nowPlayingId;
+                const playData  = plays[record.discogs_id];
+                const count     = playData?.play_count ?? 0;
+                const isEditing = editingId === record.discogs_id;
+                const imgUrl    = `/api/image?url=${encodeURIComponent(record.cover_url)}`;
 
-                  if (absOffset > 5) {
-                    return (
-                      <div
-                        key={record.discogs_id}
-                        style={{ width: cardWidth, height: cardWidth, flexShrink: 0 }}
-                      />
-                    );
-                  }
-
-                  const scale   = isActive ? 1 : absOffset === 1 ? 0.88 : 0.80;
-                  const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.70 : absOffset === 2 ? 0.35 : 0.10;
-                  const isEditing = editingId === record.discogs_id && isActive;
-
-                  return (
-                    <div
-                      key={record.discogs_id}
-                      onClick={() => onCardClick(record, i)}
+                return (
+                  <div
+                    key={record.discogs_id}
+                    style={{
+                      gridColumn:   wide ? "span 2" : "span 1",
+                      aspectRatio:  isHero ? "4/3" : wide ? "5/2" : "1/1",
+                      borderRadius: isHero ? 18 : 14,
+                      position:     "relative",
+                      overflow:     "hidden",
+                      cursor:       "pointer",
+                      border:       isNowPlay
+                        ? `1.5px solid rgba(201,168,76,0.45)`
+                        : "1px solid rgba(255,255,255,0.05)",
+                      animation:    `card-enter 0.55s ${EASE} both`,
+                      animationDelay: `${Math.min(i * 0.048, 0.65)}s`,
+                    }}
+                    onMouseEnter={() => setHoveredId(record.discogs_id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    onClick={() => {
+                      if (isEditing) return;
+                      openNowPlaying(record);
+                    }}
+                  >
+                    {/* ── Background album art ── */}
+                    <img
+                      src={imgUrl}
+                      alt={record.title}
+                      draggable={false}
                       style={{
-                        width:      cardWidth,
-                        height:     cardWidth,
-                        flexShrink: 0,
-                        transform:  `scale(${scale})`,
-                        opacity,
-                        transition: isDragging
-                          ? "none"
-                          : `transform 0.38s ${EASE}, opacity 0.38s ease`,
+                        position:   "absolute",
+                        inset:      0,
+                        width:      "100%",
+                        height:     "100%",
+                        objectFit:  "cover",
+                        transition: "transform 0.5s ease, filter 0.5s ease",
+                        transform:  isHovered ? "scale(1.07)" : "scale(1)",
+                        filter:     isHovered ? "brightness(0.2) saturate(0.4)" : "brightness(1)",
                       }}
-                      className="relative rounded-2xl overflow-hidden cursor-pointer"
+                    />
+
+                    {/* ── Frosted-glass hover overlay (slides up) ── */}
+                    <div
+                      style={{
+                        position:       "absolute",
+                        inset:          0,
+                        background:     "rgba(10,8,5,0.78)",
+                        backdropFilter: isHovered ? "blur(18px)" : "none",
+                        WebkitBackdropFilter: isHovered ? "blur(18px)" : "none",
+                        display:        "flex",
+                        flexDirection:  "column",
+                        alignItems:     "center",
+                        justifyContent: "center",
+                        gap:            10,
+                        padding:        14,
+                        opacity:        isHovered ? 1 : 0,
+                        transform:      isHovered ? "translateY(0)" : "translateY(100%)",
+                        transition:     `opacity 0.35s ease, transform 0.38s ${EASE}`,
+                      }}
                     >
-                      {/* Album art */}
-                      <img
-                        src={`/api/image?url=${encodeURIComponent(record.cover_url)}`}
-                        alt={record.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        draggable={false}
-                      />
-
-                      {/* Bottom gradient scrim */}
-                      <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/40 to-transparent pointer-events-none" />
-
-                      {/* Play count badge / inline editor — top right */}
-                      {isEditing ? (
-                        <div
-                          className="absolute top-3 right-3 flex items-center gap-1 bg-zinc-900/95 backdrop-blur-md border border-zinc-700 rounded-xl px-2 py-1.5"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min="0"
-                            max="9999"
-                            value={editValue}
-                            onChange={e => setEditValue(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter")  saveEdit();
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                            className="w-12 bg-transparent text-white text-sm text-center outline-none tabular-nums"
-                            autoFocus
-                          />
-                          <button onClick={saveEdit}              className="text-amber-500 text-sm font-bold px-0.5">✓</button>
-                          <button onClick={() => setEditingId(null)} className="text-zinc-500 text-sm px-0.5">✕</button>
-                        </div>
-                      ) : (
-                        (isActive || count > 0) && (
-                          <div
-                            className={`absolute top-3 right-3 bg-black/65 backdrop-blur-md rounded-full px-2.5 py-0.5 ${
-                              isActive ? "cursor-pointer" : "pointer-events-none"
-                            }`}
-                            onClick={isActive ? e => {
-                              e.stopPropagation();
-                              openEditor(record.discogs_id, count);
-                            } : undefined}
-                          >
-                            <span className="text-[10px] text-zinc-400 font-medium tabular-nums">
-                              {count > 0 ? `${count}×` : "·"}
-                            </span>
-                          </div>
-                        )
-                      )}
-
-                      {/* NOW PLAYING badge — top left */}
-                      {isNowPlay && (
-                        <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-amber-500 rounded-full px-2.5 py-1 pointer-events-none">
-                          <span className="w-1.5 h-1.5 rounded-full bg-black now-playing-dot" />
-                          <span className="text-[9px] font-black text-black tracking-[0.15em] uppercase">
-                            Now Playing
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Title + artist overlay — bottom */}
-                      <div className="absolute inset-x-0 bottom-0 p-4 pointer-events-none">
-                        <p className="text-white font-bold text-sm leading-snug line-clamp-2 drop-shadow">
-                          {record.title}
-                        </p>
-                        <p className="text-zinc-400 text-xs mt-0.5 line-clamp-1 drop-shadow">
-                          {record.artist}
-                        </p>
+                      {/* Spinning vinyl disc */}
+                      <div
+                        style={{
+                          width:        wide ? "28%" : "52%",
+                          aspectRatio:  "1/1",
+                          borderRadius: "50%",
+                          overflow:     "hidden",
+                          border:       `2px solid rgba(201,168,76,0.3)`,
+                          boxShadow:    `0 0 0 5px rgba(201,168,76,0.07), 0 14px 40px rgba(0,0,0,0.65)`,
+                          animation:    isHovered ? "vinyl-spin 5s linear infinite" : "none",
+                          flexShrink:   0,
+                        }}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={record.title}
+                          draggable={false}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
                       </div>
 
-                      {/* Active/now-playing border ring */}
-                      <div
-                        className="absolute inset-0 rounded-2xl border-2 pointer-events-none transition-colors duration-300"
-                        style={{
-                          borderColor: isNowPlay && isActive
-                            ? "rgba(245,158,11,0.7)"
-                            : isActive
-                              ? "rgba(113,113,122,0.3)"
-                              : "transparent",
-                        }}
-                      />
+                      {/* Overlay info */}
+                      <div style={{ textAlign: "center", width: "100%" }}>
+                        <p
+                          className="line-clamp-2"
+                          style={{
+                            fontFamily:  "var(--font-playfair)",
+                            fontSize:    isHero ? "1.05rem" : wide ? "0.9rem" : "0.82rem",
+                            fontWeight:  700,
+                            color:       "#f5f0e8",
+                            lineHeight:  1.25,
+                          }}
+                        >
+                          {record.title}
+                        </p>
+                        <p
+                          className="line-clamp-1"
+                          style={{
+                            fontFamily:    "var(--font-mono)",
+                            fontSize:      "0.58rem",
+                            color:         GOLD,
+                            marginTop:     4,
+                            letterSpacing: "0.1em",
+                          }}
+                        >
+                          {record.artist.toUpperCase()}
+                        </p>
+                        <p style={{
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.52rem",
+                          color:         "#5a4828",
+                          marginTop:     5,
+                          letterSpacing: "0.06em",
+                        }}>
+                          {count > 0 ? `${count}× plays` : "— plays"}
+                          {playData?.last_played ? ` · ${formatDate(playData.last_played)}` : ""}
+                        </p>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+
+                    {/* ── Default bottom info (hidden on hover) ── */}
+                    <div
+                      style={{
+                        position:   "absolute",
+                        bottom:     0, left: 0, right: 0,
+                        background: "linear-gradient(to top, rgba(10,8,5,0.96) 0%, rgba(10,8,5,0.5) 55%, transparent 100%)",
+                        padding:    isHero ? "28px 14px 14px" : "20px 10px 10px",
+                        transition: "opacity 0.3s ease",
+                        opacity:    isHovered ? 0 : 1,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <p
+                        className="line-clamp-2"
+                        style={{
+                          fontFamily:  isHero ? "var(--font-playfair)" : "inherit",
+                          fontSize:    isHero ? "1rem" : wide ? "0.8rem" : "0.72rem",
+                          fontWeight:  isHero ? 700 : 600,
+                          color:       "#f5f0e8",
+                          lineHeight:  1.25,
+                        }}
+                      >
+                        {record.title}
+                      </p>
+                      <p
+                        className="line-clamp-1"
+                        style={{
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.56rem",
+                          color:         "rgba(245,240,232,0.38)",
+                          marginTop:     3,
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        {record.artist}
+                      </p>
+                      {(isHero || wide) && count > 0 && (
+                        <p style={{
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.52rem",
+                          color:         GOLD,
+                          marginTop:     4,
+                          letterSpacing: "0.1em",
+                          opacity:       0.8,
+                        }}>
+                          {count}× plays
+                        </p>
+                      )}
+                    </div>
+
+                    {/* ── Play count badge — top right ── */}
+                    {isEditing ? (
+                      <div
+                        style={{
+                          position: "absolute", top: 8, right: 8,
+                          display: "flex", alignItems: "center", gap: 4,
+                          background: "rgba(12,10,7,0.96)",
+                          backdropFilter: "blur(10px)",
+                          border: `1px solid rgba(201,168,76,0.28)`,
+                          borderRadius: 10,
+                          padding: "6px 8px",
+                          zIndex: 10,
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <input
+                          type="number" inputMode="numeric" min="0" max="9999"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter")  saveEdit();
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          style={{
+                            width: 40, background: "transparent", color: "#f5f0e8",
+                            fontSize: "0.72rem", textAlign: "center",
+                            border: "none", outline: "none",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                          autoFocus
+                        />
+                        <button onClick={saveEdit} style={{ color: GOLD, fontSize: "0.75rem", fontWeight: 700, background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
+                        <button onClick={() => setEditingId(null)} style={{ color: "#4a3a1a", fontSize: "0.75rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+                      </div>
+                    ) : count > 0 && (
+                      <div
+                        style={{
+                          position: "absolute", top: 8, right: 8,
+                          background: "rgba(12,10,7,0.72)",
+                          backdropFilter: "blur(8px)",
+                          borderRadius: 999,
+                          padding: "3px 8px",
+                          cursor: "pointer",
+                          zIndex: 10,
+                        }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          openEditor(record.discogs_id, count);
+                        }}
+                      >
+                        <span style={{
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.52rem",
+                          color:         "rgba(201,168,76,0.75)",
+                          letterSpacing: "0.05em",
+                        }}>
+                          {count}×
+                        </span>
+                      </div>
+                    )}
+
+                    {/* ── Now Playing badge — top left ── */}
+                    {isNowPlay && (
+                      <div
+                        style={{
+                          position:    "absolute", top: 8, left: 8,
+                          display:     "flex", alignItems: "center", gap: 5,
+                          background:  GOLD,
+                          borderRadius: 999,
+                          padding:     "4px 10px",
+                          pointerEvents: "none",
+                          zIndex: 10,
+                        }}
+                      >
+                        <span
+                          className="now-playing-dot"
+                          style={{ width: 5, height: 5, borderRadius: "50%", background: "#0c0a07", flexShrink: 0, display: "block" }}
+                        />
+                        <span style={{
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.48rem",
+                          fontWeight:    700,
+                          color:         "#0c0a07",
+                          letterSpacing: "0.15em",
+                        }}>
+                          NOW PLAYING
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
-        {/* ── Compact Now Playing bar (measured for centering) ── */}
-        <div ref={botRef} className="shrink-0 px-4 pt-2 pb-safe">
-          {nowPlayingRec ? (
-            <div className="flex items-center gap-3 bg-zinc-950 border border-amber-500/15 rounded-2xl px-3 py-2.5">
-              {/* Mini thumbnail */}
-              <div className="relative shrink-0">
-                <div className="w-9 h-9 rounded-lg overflow-hidden bg-zinc-900">
+        {/* ── Premium Now Playing bar ─────────────────────────────────────── */}
+        <div
+          style={{
+            flexShrink:          0,
+            background:          "rgba(10,8,5,0.95)",
+            backdropFilter:      "blur(24px)",
+            WebkitBackdropFilter:"blur(24px)",
+            borderTop:           "1px solid rgba(201,168,76,0.1)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px" }}>
+
+            {/* Thumbnail */}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <div style={{
+                width: 46, height: 46, borderRadius: 10,
+                overflow: "hidden",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {nowPlayingRec ? (
                   <img
                     src={`/api/image?url=${encodeURIComponent(nowPlayingRec.cover_url)}`}
                     alt={nowPlayingRec.title}
-                    className="w-full h-full object-cover"
                     draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
-                </div>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 now-playing-dot" />
+                ) : (
+                  <Disc3 size={18} strokeWidth={1} style={{ color: "#2a1f10" }} />
+                )}
               </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[9px] font-black tracking-[0.18em] text-amber-500 uppercase leading-none mb-0.5">
-                  Now Playing
-                </p>
-                <p className="text-xs font-semibold text-white line-clamp-1 leading-tight">
-                  {nowPlayingRec.title}
-                </p>
-                <p className="text-[10px] text-zinc-600 line-clamp-1">{nowPlayingRec.artist}</p>
-              </div>
-
-              {/* Play count */}
-              {nowPlayData && (
-                <div className="shrink-0 text-right">
-                  <p className="text-base font-black text-amber-500 tabular-nums leading-none">
-                    {nowPlayData.play_count}
-                  </p>
-                  <p className="text-[9px] text-zinc-700 mt-0.5">
-                    {nowPlayData.play_count === 1 ? "play" : "plays"}
-                  </p>
-                </div>
+              {nowPlayingRec && (
+                <span
+                  className="now-playing-dot"
+                  style={{
+                    position: "absolute", top: -3, right: -3,
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: GOLD,
+                    border: "1.5px solid #0c0a07",
+                    display: "block",
+                  }}
+                />
               )}
             </div>
-          ) : (
-            /* Placeholder — same height as live state so layout never shifts */
-            <div className="flex items-center gap-3 bg-zinc-950/50 border border-zinc-900 rounded-2xl px-3 py-2.5">
-              <div className="w-9 h-9 rounded-lg bg-zinc-900/60 flex items-center justify-center shrink-0">
-                <Disc3 size={15} strokeWidth={1} className="text-zinc-800" />
-              </div>
-              <p className="text-xs text-zinc-800">Tap a record to start playing</p>
+
+            {/* Track info + waveform */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {nowPlayingRec ? (
+                <>
+                  <p
+                    className="line-clamp-1"
+                    style={{
+                      fontFamily: "var(--font-playfair)",
+                      fontSize:   "0.875rem",
+                      fontWeight: 700,
+                      color:      "#f5f0e8",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {nowPlayingRec.title}
+                  </p>
+                  <p
+                    className="line-clamp-1"
+                    style={{
+                      fontFamily:    "var(--font-mono)",
+                      fontSize:      "0.58rem",
+                      color:         "#5a4828",
+                      marginTop:     2,
+                      letterSpacing: "0.07em",
+                    }}
+                  >
+                    {nowPlayingRec.artist.toUpperCase()}
+                  </p>
+                  {/* Waveform bars */}
+                  <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 18, marginTop: 5 }}>
+                    {WAVE_DURATIONS.map((dur, i) => (
+                      <div
+                        key={i}
+                        className="wave-bar"
+                        style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p style={{
+                  fontFamily:    "var(--font-mono)",
+                  fontSize:      "0.6rem",
+                  color:         "#2a1f10",
+                  letterSpacing: "0.12em",
+                }}>
+                  TAP A RECORD TO BEGIN
+                </p>
+              )}
             </div>
-          )}
+
+            {/* Play count */}
+            {nowPlayData && (
+              <div style={{ flexShrink: 0, textAlign: "right" }}>
+                <p style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize:   "1.3rem",
+                  fontWeight: 700,
+                  color:      GOLD,
+                  lineHeight: 1,
+                }}>
+                  {nowPlayData.play_count}×
+                </p>
+                <p style={{
+                  fontFamily:    "var(--font-mono)",
+                  fontSize:      "0.48rem",
+                  color:         "#3a2c14",
+                  marginTop:     2,
+                  letterSpacing: "0.12em",
+                }}>
+                  PLAYS
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="pb-safe" style={{ paddingTop: 0 }} />
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════════
+      {/* ════════════════════════════════════════════════════════════════════
           NOW PLAYING MODE
-      ══════════════════════════════════════════════════════════════════════ */}
+      ════════════════════════════════════════════════════════════════════ */}
       <div
-        className="absolute inset-0 flex flex-col"
         style={{
+          position: "absolute", inset: 0, display: "flex", flexDirection: "column",
           opacity:       mode === "now-playing" ? 1 : 0,
           transform:     mode === "now-playing" ? "translateY(0)" : "translateY(24px)",
           pointerEvents: mode === "now-playing" ? "auto" : "none",
           transition:    `opacity 0.32s ${EASE}, transform 0.32s ${EASE}`,
         }}
       >
-        {/* ── Main content: two sub-panels with CSS opacity transitions ── */}
-        <div className="flex-1 min-h-0 relative">
+        {/* ── Main content: detail + playing sub-panels ── */}
+        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
 
           {/* ── Detail sub-panel (shown when !isPlaying) ── */}
           <div
-            className="absolute inset-0 overflow-y-auto scrollbar-hide"
+            className="scrollbar-hide"
             style={{
+              position: "absolute", inset: 0, overflowY: "auto",
               opacity:       isPlaying ? 0 : 1,
               pointerEvents: (mode !== "now-playing" || isPlaying) ? "none" : "auto",
               transition:    `opacity 0.32s ${EASE}`,
             }}
           >
-            <div className="flex flex-col items-center gap-5 px-8 pt-safe py-6">
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center",
+              gap: 20, padding: "max(env(safe-area-inset-top), 12px) 28px 28px",
+            }}>
 
               {/* Album art */}
               <div
-                className="rounded-2xl overflow-hidden bg-zinc-900 shrink-0"
                 style={{
-                  width:     "min(80vw, 380px)",
-                  height:    "min(80vw, 380px)",
-                  boxShadow: "0 32px 80px -8px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.04)",
+                  width:     "min(80vw, 360px)",
+                  height:    "min(80vw, 360px)",
+                  borderRadius: 20,
+                  overflow:  "hidden",
+                  background: "rgba(255,255,255,0.03)",
+                  boxShadow: "0 28px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.05)",
+                  flexShrink: 0,
                 }}
               >
                 {viewingRecord && (
                   <img
                     src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
                     alt={viewingRecord.title}
-                    className="w-full h-full object-cover"
                     draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 )}
               </div>
 
               {/* Title + artist */}
-              <div className="text-center w-full max-w-sm">
-                <p className="text-2xl font-black tracking-tight leading-tight line-clamp-2">
+              <div style={{ textAlign: "center", width: "100%", maxWidth: 340 }}>
+                <p
+                  className="line-clamp-2"
+                  style={{
+                    fontFamily: "var(--font-playfair)",
+                    fontSize:   "1.6rem",
+                    fontWeight: 900,
+                    letterSpacing: "-0.01em",
+                    lineHeight: 1.15,
+                    color: "#f5f0e8",
+                  }}
+                >
                   {viewingRecord?.title ?? ""}
                 </p>
-                <p className="text-zinc-500 text-lg mt-1.5 line-clamp-1">
-                  {viewingRecord?.artist ?? ""}
+                <p style={{
+                  fontFamily:    "var(--font-mono)",
+                  fontSize:      "0.7rem",
+                  color:         "#5a4828",
+                  marginTop:     8,
+                  letterSpacing: "0.1em",
+                }}>
+                  {viewingRecord?.artist?.toUpperCase() ?? ""}
                 </p>
               </div>
 
               {/* Metadata section */}
               {albumLoading ? (
-                <div className="w-full max-w-sm space-y-2.5">
-                  <div className="h-3.5 bg-zinc-900 rounded-full w-2/3 mx-auto animate-pulse" />
-                  <div className="flex gap-2 justify-center">
-                    <div className="h-6 bg-zinc-900 rounded-full w-14 animate-pulse" />
-                    <div className="h-6 bg-zinc-900 rounded-full w-20 animate-pulse" />
-                    <div className="h-6 bg-zinc-900 rounded-full w-16 animate-pulse" />
+                <div style={{ width: "100%", maxWidth: 340 }}>
+                  <div style={{ height: 12, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: "60%", margin: "0 auto 10px" }} />
+                  <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 12 }}>
+                    {[56, 72, 60].map((w, i) => (
+                      <div key={i} style={{ height: 22, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: w }} />
+                    ))}
                   </div>
-                  <div className="space-y-1.5 pt-1">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {[90, 80, 85, 75, 88, 70].map((w, i) => (
-                      <div key={i} className="flex items-center gap-3 px-4">
-                        <div className="h-2.5 bg-zinc-900 rounded-full w-6 animate-pulse shrink-0" />
-                        <div className="h-2.5 bg-zinc-900 rounded-full animate-pulse flex-1" style={{ maxWidth: `${w}%` }} />
-                        <div className="h-2.5 bg-zinc-900 rounded-full w-8 animate-pulse shrink-0" />
+                      <div key={i} style={{ display: "flex", gap: 10, padding: "0 12px" }}>
+                        <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 20, flexShrink: 0 }} />
+                        <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, flex: 1, maxWidth: `${w}%` }} />
+                        <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 28, flexShrink: 0 }} />
                       </div>
                     ))}
                   </div>
                 </div>
               ) : albumDetails ? (
-                <div className="w-full max-w-sm space-y-4">
+                <div style={{ width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 16 }}>
 
                   {/* Year · Label */}
                   {(albumDetails.year || albumDetails.label) && (
-                    <p className="text-center text-[11px] text-zinc-500 tracking-wide uppercase">
+                    <p style={{
+                      textAlign:     "center",
+                      fontFamily:    "var(--font-mono)",
+                      fontSize:      "0.6rem",
+                      color:         "#5a4828",
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                    }}>
                       {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
                     </p>
                   )}
 
                   {/* Genre + style pills */}
                   {(albumDetails.genres.length > 0 || albumDetails.styles.length > 0) && (
-                    <div className="flex flex-wrap gap-1.5 justify-center">
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
                       {albumDetails.genres.map(g => (
-                        <span key={g} className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] text-zinc-400 tracking-wide">
+                        <span key={g} style={{
+                          padding:       "4px 10px",
+                          background:    "rgba(201,168,76,0.07)",
+                          border:        "1px solid rgba(201,168,76,0.2)",
+                          borderRadius:  999,
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.56rem",
+                          color:         GOLD,
+                          letterSpacing: "0.06em",
+                        }}>
                           {g}
                         </span>
                       ))}
                       {albumDetails.styles.map(s => (
-                        <span key={s} className="px-2.5 py-1 bg-zinc-950 border border-zinc-800/50 rounded-full text-[10px] text-zinc-600 tracking-wide">
+                        <span key={s} style={{
+                          padding:       "4px 10px",
+                          background:    "rgba(255,255,255,0.03)",
+                          border:        "1px solid rgba(255,255,255,0.07)",
+                          borderRadius:  999,
+                          fontFamily:    "var(--font-mono)",
+                          fontSize:      "0.56rem",
+                          color:         "#4a3820",
+                          letterSpacing: "0.06em",
+                        }}>
                           {s}
                         </span>
                       ))}
@@ -757,176 +976,314 @@ export default function Home() {
 
                   {/* Tracklist */}
                   {albumDetails.tracklist.length > 0 && (
-                    <div className="rounded-xl overflow-hidden border border-zinc-900">
+                    <div style={{
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                    }}>
                       {albumDetails.tracklist.map((track, i) => (
                         <div
                           key={i}
-                          className={`flex items-baseline gap-3 px-4 py-2.5 ${
-                            i < albumDetails.tracklist.length - 1 ? "border-b border-zinc-900/80" : ""
-                          }`}
+                          style={{
+                            display:     "flex",
+                            alignItems:  "baseline",
+                            gap:         10,
+                            padding:     "9px 14px",
+                            borderBottom: i < albumDetails.tracklist.length - 1
+                              ? "1px solid rgba(255,255,255,0.04)"
+                              : "none",
+                          }}
                         >
-                          <span className="text-[10px] text-zinc-700 w-5 shrink-0 tabular-nums text-right">
+                          <span style={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize:   "0.55rem",
+                            color:      "#3a2c14",
+                            width:      18,
+                            flexShrink: 0,
+                            textAlign:  "right",
+                          }}>
                             {track.position}
                           </span>
-                          <span className="flex-1 text-xs text-zinc-300 leading-snug">
+                          <span style={{ flex: 1, fontSize: "0.75rem", color: "#c8bfa8", lineHeight: 1.3 }}>
                             {track.title}
                           </span>
                           {track.duration && (
-                            <span className="text-[10px] text-zinc-700 tabular-nums shrink-0">
+                            <span style={{
+                              fontFamily: "var(--font-mono)",
+                              fontSize:   "0.55rem",
+                              color:      "#3a2c14",
+                              flexShrink: 0,
+                            }}>
                               {track.duration}
                             </span>
                           )}
                         </div>
                       ))}
                       {albumDetails.runtime && (
-                        <div className="flex justify-end px-4 py-2.5 border-t border-zinc-900">
-                          <span className="text-[10px] text-zinc-600 tracking-wide">
+                        <div style={{
+                          display:     "flex",
+                          justifyContent: "flex-end",
+                          padding:     "8px 14px",
+                          borderTop:   "1px solid rgba(255,255,255,0.04)",
+                        }}>
+                          <span style={{
+                            fontFamily:    "var(--font-mono)",
+                            fontSize:      "0.55rem",
+                            color:         "#3a2c14",
+                            letterSpacing: "0.08em",
+                          }}>
                             {albumDetails.runtime} total
                           </span>
                         </div>
                       )}
                     </div>
                   )}
-
                 </div>
               ) : null}
 
               {/* Play count with inline editor */}
               <div>
                 {npIsEditing ? (
-                  <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2.5">
+                  <div style={{
+                    display:      "flex",
+                    alignItems:   "center",
+                    gap:          10,
+                    background:   "rgba(255,255,255,0.04)",
+                    border:       `1px solid rgba(201,168,76,0.25)`,
+                    borderRadius: 20,
+                    padding:      "10px 16px",
+                  }}>
                     <input
-                      type="number"
-                      inputMode="numeric"
-                      min="0"
-                      max="9999"
+                      type="number" inputMode="numeric" min="0" max="9999"
                       value={editValue}
                       onChange={e => setEditValue(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === "Enter")  saveEdit();
                         if (e.key === "Escape") setEditingId(null);
                       }}
-                      className="w-16 bg-transparent text-white text-lg text-center outline-none tabular-nums font-bold"
+                      style={{
+                        width: 60, background: "transparent",
+                        color: "#f5f0e8", fontSize: "1.1rem",
+                        textAlign: "center", border: "none", outline: "none",
+                        fontFamily: "var(--font-mono)", fontWeight: 700,
+                      }}
                       autoFocus
                     />
-                    <span className="text-zinc-600 text-sm">plays</span>
-                    <button onClick={saveEdit}              className="text-amber-500 font-bold text-lg ml-1">✓</button>
-                    <button onClick={() => setEditingId(null)} className="text-zinc-600 text-lg">✕</button>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#3a2c14" }}>plays</span>
+                    <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
+                    <button onClick={() => setEditingId(null)} style={{ color: "#3a2c14", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
                   </div>
                 ) : (
                   <button
                     onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
-                    className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-5 py-2 transition-colors hover:border-zinc-700 active:scale-95 transition-transform"
+                    style={{
+                      display:      "flex",
+                      alignItems:   "center",
+                      gap:          8,
+                      background:   "rgba(255,255,255,0.04)",
+                      border:       "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 999,
+                      padding:      "8px 20px",
+                      cursor:       "pointer",
+                      transition:   "border-color 0.2s, transform 0.15s",
+                    }}
                   >
-                    <span className="text-white font-black text-lg tabular-nums">
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
                       {npPlayData?.play_count ?? 0}
                     </span>
-                    <span className="text-zinc-500 text-sm">
-                      {(npPlayData?.play_count ?? 0) === 1 ? "play" : "plays"}
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                      {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
                     </span>
-                    <span className="text-zinc-700 text-xs ml-0.5">edit</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.5rem", color: "#3a2c14", letterSpacing: "0.1em", marginLeft: 2 }}>
+                      EDIT
+                    </span>
                   </button>
                 )}
               </div>
 
-              {/* Mark as Playing button */}
+              {/* Mark as Playing */}
               <button
                 onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
-                className="flex items-center gap-2.5 rounded-full px-9 py-4 text-sm font-black tracking-[0.08em] uppercase active:scale-95 transition-transform"
                 style={{
-                  background:  "#f59e0b",
-                  color:       "#000",
-                  boxShadow:   "0 8px 32px -4px rgba(245,158,11,0.5)",
+                  display:      "flex",
+                  alignItems:   "center",
+                  gap:          10,
+                  borderRadius: 999,
+                  padding:      "14px 36px",
+                  fontFamily:   "var(--font-mono)",
+                  fontSize:     "0.7rem",
+                  fontWeight:   700,
+                  letterSpacing:"0.12em",
+                  textTransform:"uppercase",
+                  background:   GOLD,
+                  color:        "#0c0a07",
+                  border:       "none",
+                  cursor:       "pointer",
+                  boxShadow:    `0 8px 32px -4px rgba(201,168,76,0.45)`,
+                  transition:   "transform 0.15s, box-shadow 0.2s",
                 }}
               >
-                <Play size={15} fill="#000" strokeWidth={0} />
-                <span>Mark as Playing</span>
+                <Play size={14} fill="#0c0a07" strokeWidth={0} />
+                Mark as Playing
               </button>
 
-              {/* Bottom spacer */}
-              <div className="h-4" />
+              <div style={{ height: 16 }} />
             </div>
           </div>
 
           {/* ── Playing sub-panel (shown when isPlaying) ── */}
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8"
             style={{
-              opacity:       isPlaying ? 1 : 0,
-              pointerEvents: (mode === "now-playing" && isPlaying) ? "auto" : "none",
-              transition:    `opacity 0.4s ${EASE}`,
-              paddingTop:    "max(env(safe-area-inset-top), 12px)",
+              position:       "absolute",
+              inset:          0,
+              display:        "flex",
+              flexDirection:  "column",
+              alignItems:     "center",
+              justifyContent: "center",
+              gap:            20,
+              padding:        "max(env(safe-area-inset-top), 12px) 28px 28px",
+              opacity:        isPlaying ? 1 : 0,
+              pointerEvents:  (mode === "now-playing" && isPlaying) ? "auto" : "none",
+              transition:     `opacity 0.4s ${EASE}`,
             }}
           >
             {/* Large album art */}
             <div
-              className="rounded-2xl overflow-hidden bg-zinc-900 shrink-0"
               style={{
-                width:     "min(90vw, 500px)",
-                height:    "min(90vw, 500px)",
-                boxShadow: "0 40px 96px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.05)",
+                width:        "min(88vw, 480px)",
+                height:       "min(88vw, 480px)",
+                borderRadius: 22,
+                overflow:     "hidden",
+                background:   "rgba(255,255,255,0.03)",
+                boxShadow:    "0 36px 96px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.05)",
+                flexShrink:   0,
               }}
             >
               {viewingRecord && (
                 <img
                   src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
                   alt={viewingRecord.title}
-                  className="w-full h-full object-cover"
                   draggable={false}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               )}
             </div>
 
-            {/* NOW PLAYING indicator */}
-            <div className="flex items-center gap-2.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500 now-playing-dot shrink-0" />
-              <span className="text-[11px] font-black tracking-[0.25em] text-amber-500 uppercase">
-                Now Playing
+            {/* Now Playing indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                className="now-playing-dot"
+                style={{ width: 8, height: 8, borderRadius: "50%", background: GOLD, flexShrink: 0, display: "block" }}
+              />
+              <span style={{
+                fontFamily:    "var(--font-mono)",
+                fontSize:      "0.62rem",
+                fontWeight:    700,
+                letterSpacing: "0.25em",
+                color:         GOLD,
+              }}>
+                NOW PLAYING
               </span>
             </div>
 
             {/* Title + artist */}
-            <div className="text-center">
-              <p className="text-xl font-black tracking-tight leading-tight line-clamp-2">
+            <div style={{ textAlign: "center" }}>
+              <p
+                className="line-clamp-2"
+                style={{
+                  fontFamily: "var(--font-playfair)",
+                  fontSize:   "1.4rem",
+                  fontWeight: 900,
+                  letterSpacing: "-0.01em",
+                  lineHeight: 1.2,
+                  color: "#f5f0e8",
+                }}
+              >
                 {viewingRecord?.title ?? ""}
               </p>
-              <p className="text-zinc-500 text-base mt-1 line-clamp-1">
-                {viewingRecord?.artist ?? ""}
+              <p style={{
+                fontFamily:    "var(--font-mono)",
+                fontSize:      "0.65rem",
+                color:         "#5a4828",
+                marginTop:     8,
+                letterSpacing: "0.1em",
+              }}>
+                {viewingRecord?.artist?.toUpperCase() ?? ""}
               </p>
             </div>
 
             {/* Play count badge */}
-            <div className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-5 py-2">
-              <span className="text-white font-black text-lg tabular-nums">
+            <div style={{
+              display:      "flex",
+              alignItems:   "center",
+              gap:          8,
+              background:   "rgba(255,255,255,0.04)",
+              border:       "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 999,
+              padding:      "8px 20px",
+            }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
                 {npPlayData?.play_count ?? 0}
               </span>
-              <span className="text-zinc-500 text-sm">
-                {(npPlayData?.play_count ?? 0) === 1 ? "play" : "plays"}
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
               </span>
             </div>
           </div>
-
         </div>
 
-        {/* ── Bottom navigation bar ── */}
-        <div className="shrink-0 flex items-center justify-between px-5 pt-3 pb-safe">
+        {/* ── Bottom nav bar (frosted) ── */}
+        <div
+          style={{
+            flexShrink:          0,
+            display:             "flex",
+            alignItems:          "center",
+            justifyContent:      "space-between",
+            padding:             "10px 18px",
+            background:          "rgba(10,8,5,0.9)",
+            backdropFilter:      "blur(20px)",
+            WebkitBackdropFilter:"blur(20px)",
+            borderTop:           "1px solid rgba(255,255,255,0.05)",
+          }}
+        >
           <button
             onClick={exitNowPlaying}
-            className="flex items-center gap-2 text-zinc-500 hover:text-zinc-300 transition-colors active:scale-95 transition-transform py-2 pr-4"
+            style={{
+              display:     "flex",
+              alignItems:  "center",
+              gap:         8,
+              color:       "#4a3820",
+              background:  "transparent",
+              border:      "none",
+              cursor:      "pointer",
+              padding:     "6px 12px 6px 0",
+              transition:  "color 0.2s",
+            }}
           >
-            <ArrowLeft size={18} />
-            <span className="text-sm font-medium">Browse</span>
+            <ArrowLeft size={16} />
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", letterSpacing: "0.08em" }}>
+              BROWSE
+            </span>
           </button>
 
           <button
             onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
             disabled={syncing}
             aria-label="Sync with Discogs"
-            className="p-2 text-zinc-700 hover:text-zinc-400 transition-colors disabled:opacity-40"
+            style={{
+              padding:    "6px",
+              color:      "#3a2c14",
+              background: "transparent",
+              border:     "none",
+              cursor:     "pointer",
+              opacity:    syncing ? 0.4 : 1,
+              transition: "color 0.2s",
+            }}
           >
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
           </button>
         </div>
+        <div className="pb-safe" style={{ background: "rgba(10,8,5,0.9)", paddingTop: 0 }} />
       </div>
 
     </main>

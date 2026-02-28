@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #ffffff;
+  --background: #0c0a07;
+  --foreground: #f5f0e8;
+  --gold: #C9A84C;
+  --gold-dim: #7a6228;
+  --gold-glow: rgba(201, 168, 76, 0.15);
+  --surface: rgba(18, 14, 9, 0.92);
 }
 
 @theme inline {
@@ -24,13 +28,24 @@ body {
 }
 
 body {
-  background: #000;
-  color: #fff;
+  background: var(--background);
+  color: var(--foreground);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Hide scrollbar utility */
+/* ── Film-grain noise texture ─────────────────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.038;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Utilities ────────────────────────────────────────────────────────────── */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -39,7 +54,6 @@ body {
   display: none;
 }
 
-/* Safe-area helpers */
 .pt-safe {
   padding-top: max(env(safe-area-inset-top), 12px);
 }
@@ -47,20 +61,47 @@ body {
   padding-bottom: max(env(safe-area-inset-bottom), 16px);
 }
 
-/* Vinyl spin animation */
+/* ── Vinyl spin ───────────────────────────────────────────────────────────── */
 @keyframes vinyl-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
 .vinyl-spin {
-  animation: vinyl-spin 2s linear infinite;
+  animation: vinyl-spin 2.4s linear infinite;
 }
 
-/* Now-playing pulse */
+/* ── Now-playing pulse ────────────────────────────────────────────────────── */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.2; }
+  50%       { opacity: 0.15; }
 }
 .now-playing-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* ── Card stagger entrance ────────────────────────────────────────────────── */
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Waveform bars ────────────────────────────────────────────────────────── */
+@keyframes waveform-bar {
+  0%, 100% { height: 3px; }
+  50%       { height: 15px; }
+}
+.wave-bar {
+  width: 2px;
+  min-height: 3px;
+  background: var(--gold);
+  border-radius: 1px;
+  animation: waveform-bar 0.85s ease-in-out infinite;
+  opacity: 0.72;
+  flex-shrink: 0;
 }
