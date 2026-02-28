@@ -198,6 +198,15 @@ export default function Home() {
     setMode("browse");
   }, []);
 
+  // Opens NP playing sub-panel (spinning disc + waveform) directly
+  const openPlayingView = useCallback((record: RecordData) => {
+    setEditingId(null);
+    setViewingRecord(record);
+    setIsPlaying(true);
+    setAlbumDetails(null);
+    setMode("now-playing");
+  }, []);
+
   // ── Inline play-count editor ───────────────────────────────────────────────
 
   const openEditor = useCallback((id: string, currentCount: number) => {
@@ -401,7 +410,7 @@ export default function Home() {
           className="scrollbar-hide grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
           style={{
             flex: 1, overflowY: "auto", overscrollBehaviorY: "contain",
-            gap: 10, padding: "4px 14px 24px", alignContent: "start",
+            gap: 10, padding: "4px 14px calc(72px + max(env(safe-area-inset-bottom), 16px))", alignContent: "start",
           }}
         >
           {displayed.length === 0 ? (
@@ -565,121 +574,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* ── Now Playing bar — clickable, opens NP view ───────────────────── */}
-        <div
-          onClick={() => nowPlayingRec && openNowPlaying(nowPlayingRec)}
-          style={{
-            flexShrink:           0,
-            background:           "rgba(10,8,5,0.95)",
-            backdropFilter:       "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-            borderTop:            "1px solid rgba(201,168,76,0.1)",
-            cursor:               nowPlayingRec ? "pointer" : "default",
-            transition:           "background 0.2s",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px" }}>
-
-            {/* Thumbnail with pulse dot */}
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <div style={{
-                width: 46, height: 46, borderRadius: 10,
-                overflow: "hidden",
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                {nowPlayingRec ? (
-                  <img
-                    src={`/api/image?url=${encodeURIComponent(nowPlayingRec.cover_url)}`}
-                    alt={nowPlayingRec.title}
-                    draggable={false}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <Disc3 size={18} strokeWidth={1} style={{ color: "#2a1f10" }} />
-                )}
-              </div>
-              {nowPlayingRec && (
-                <span
-                  className="now-playing-dot"
-                  style={{
-                    position: "absolute", top: -3, right: -3,
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: GOLD, border: "1.5px solid #0c0a07",
-                    display: "block",
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Track info (title + artist only — waveform lives in NP view) */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {nowPlayingRec ? (
-                <>
-                  <p
-                    className="line-clamp-1"
-                    style={{
-                      fontFamily: "var(--font-playfair)",
-                      fontSize:   "0.875rem",
-                      fontWeight: 700,
-                      color:      "#f5f0e8",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {nowPlayingRec.title}
-                  </p>
-                  <p
-                    className="line-clamp-1"
-                    style={{
-                      fontFamily:    "var(--font-mono)",
-                      fontSize:      "0.58rem",
-                      color:         "#5a4828",
-                      marginTop:     3,
-                      letterSpacing: "0.07em",
-                    }}
-                  >
-                    {nowPlayingRec.artist.toUpperCase()}
-                  </p>
-                </>
-              ) : (
-                <p style={{
-                  fontFamily:    "var(--font-mono)",
-                  fontSize:      "0.6rem",
-                  color:         "#2a1f10",
-                  letterSpacing: "0.12em",
-                }}>
-                  TAP A RECORD TO BEGIN
-                </p>
-              )}
-            </div>
-
-            {/* Play count + tap hint */}
-            {nowPlayData ? (
-              <div style={{ flexShrink: 0, textAlign: "right" }}>
-                <p style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize:   "1.3rem",
-                  fontWeight: 700,
-                  color:      GOLD,
-                  lineHeight: 1,
-                }}>
-                  {nowPlayData.play_count}×
-                </p>
-                <p style={{
-                  fontFamily:    "var(--font-mono)",
-                  fontSize:      "0.44rem",
-                  color:         "#3a2c14",
-                  marginTop:     2,
-                  letterSpacing: "0.12em",
-                }}>
-                  TAP TO EXPAND
-                </p>
-              </div>
-            ) : null}
-          </div>
-          <div className="pb-safe" style={{ paddingTop: 0 }} />
-        </div>
       </div>
 
       {/* ════════════════════════════════════════════════════════════════════
@@ -1181,6 +1075,154 @@ export default function Home() {
           </div>
         </div>
         <div className="pb-safe" style={{ background: "rgba(10,8,5,0.9)", paddingTop: 0 }} />
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          PERSISTENT NOW PLAYING BAR
+          • Outer click  → openPlayingView (spinning disc + waveform)
+          • Title/artist → openNowPlaying  (album detail)
+          • Stop button  → stopPlaying     (clears state entirely)
+          Hidden (opacity 0, pointer-events none) in NP mode — NP view
+          already provides full context via its own bottom nav.
+      ════════════════════════════════════════════════════════════════════ */}
+      <div
+        onClick={() => nowPlayingRec && openPlayingView(nowPlayingRec)}
+        style={{
+          position:             "absolute",
+          bottom:               0,
+          left:                 0,
+          right:                0,
+          zIndex:               10,
+          background:           "rgba(10,8,5,0.95)",
+          backdropFilter:       "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          borderTop:            "1px solid rgba(201,168,76,0.1)",
+          cursor:               nowPlayingRec ? "pointer" : "default",
+          opacity:              mode === "browse" ? 1 : 0,
+          pointerEvents:        mode === "browse" ? "auto" : "none",
+          transition:           `opacity 0.32s ${EASE}`,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px" }}>
+
+          {/* Thumbnail with pulse dot */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <div style={{
+              width: 46, height: 46, borderRadius: 10,
+              overflow: "hidden",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {nowPlayingRec ? (
+                <img
+                  src={`/api/image?url=${encodeURIComponent(nowPlayingRec.cover_url)}`}
+                  alt={nowPlayingRec.title}
+                  draggable={false}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <Disc3 size={18} strokeWidth={1} style={{ color: "#2a1f10" }} />
+              )}
+            </div>
+            {nowPlayingRec && (
+              <span
+                className="now-playing-dot"
+                style={{
+                  position: "absolute", top: -3, right: -3,
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: GOLD, border: "1.5px solid #0c0a07",
+                  display: "block",
+                }}
+              />
+            )}
+          </div>
+
+          {/* Title + artist — tap to open album detail */}
+          <div
+            style={{ flex: 1, minWidth: 0, cursor: nowPlayingRec ? "pointer" : "default" }}
+            onClick={e => { e.stopPropagation(); if (nowPlayingRec) openNowPlaying(nowPlayingRec); }}
+          >
+            {nowPlayingRec ? (
+              <>
+                <p
+                  className="line-clamp-1"
+                  style={{
+                    fontFamily: "var(--font-playfair)",
+                    fontSize:   "0.875rem",
+                    fontWeight: 700,
+                    color:      "#f5f0e8",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {nowPlayingRec.title}
+                </p>
+                <p
+                  className="line-clamp-1"
+                  style={{
+                    fontFamily:    "var(--font-mono)",
+                    fontSize:      "0.58rem",
+                    color:         "#5a4828",
+                    marginTop:     3,
+                    letterSpacing: "0.07em",
+                  }}
+                >
+                  {nowPlayingRec.artist.toUpperCase()}
+                </p>
+              </>
+            ) : (
+              <p style={{
+                fontFamily:    "var(--font-mono)",
+                fontSize:      "0.6rem",
+                color:         "#2a1f10",
+                letterSpacing: "0.12em",
+              }}>
+                TAP A RECORD TO BEGIN
+              </p>
+            )}
+          </div>
+
+          {/* Play count */}
+          {nowPlayData && (
+            <div style={{ flexShrink: 0, textAlign: "right" }}>
+              <p style={{
+                fontFamily: "var(--font-mono)",
+                fontSize:   "1.3rem",
+                fontWeight: 700,
+                color:      GOLD,
+                lineHeight: 1,
+              }}>
+                {nowPlayData.play_count}×
+              </p>
+            </div>
+          )}
+
+          {/* Stop button — always visible when playing */}
+          {nowPlayingId && (
+            <button
+              onClick={e => { e.stopPropagation(); stopPlaying(); }}
+              style={{
+                display:       "flex",
+                alignItems:    "center",
+                gap:           6,
+                color:         "#7a5a2a",
+                background:    "transparent",
+                border:        "1px solid rgba(201,168,76,0.18)",
+                borderRadius:  8,
+                cursor:        "pointer",
+                padding:       "5px 10px",
+                fontFamily:    "var(--font-mono)",
+                fontSize:      "0.6rem",
+                letterSpacing: "0.08em",
+                flexShrink:    0,
+              }}
+            >
+              <Square size={11} fill="currentColor" strokeWidth={0} />
+              STOP
+            </button>
+          )}
+        </div>
+        <div className="pb-safe" style={{ paddingTop: 0 }} />
       </div>
 
     </main>
