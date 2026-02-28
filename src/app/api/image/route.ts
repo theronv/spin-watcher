@@ -9,11 +9,11 @@ export async function GET(req: NextRequest) {
     return new Response("Missing URL", { status: 400 });
   }
 
-  // ?size=N  — clamped to 64–800. Defaults to 300 (browse cards).
+  // ?size=N  — clamped to 64–800. Defaults to 500 (browse cards, covers 2× retina on 3/4-col grids).
   // Now Playing mode requests 600 for crisp Retina display.
-  const sizeParam = parseInt(searchParams.get("size") ?? "300");
-  const size = Math.min(Math.max(isNaN(sizeParam) ? 300 : sizeParam, 64), 800);
-  const quality = size > 300 ? 80 : 62;
+  const sizeParam = parseInt(searchParams.get("size") ?? "500");
+  const size = Math.min(Math.max(isNaN(sizeParam) ? 500 : sizeParam, 64), 800);
+  const quality = 90;
 
   try {
     const response = await fetch(imageUrl);

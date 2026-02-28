@@ -52,19 +52,6 @@ const GOLD = "#C9A84C";
 // Durations for waveform bars — varied so they feel organic
 const WAVE_DURATIONS = [0.7, 0.5, 0.9, 0.6, 0.8, 0.55, 0.75, 0.95, 0.6, 0.85, 0.7, 0.5, 0.9, 0.65, 0.8, 0.55];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-}
-
-/** Every 9th card (0, 9, 18 …) gets the wide/hero treatment */
-function isWideCard(i: number): boolean {
-  return i % 9 === 0;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -88,9 +75,6 @@ export default function Home() {
   const [albumDetails, setAlbumDetails] = useState<AlbumDetails | null>(null);
   const [albumLoading, setAlbumLoading] = useState(false);
   const [isPlaying,    setIsPlaying]    = useState(false);
-
-  // ── Hover (for frosted-glass card overlay) ────────────────────────────────
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // ── Data loading ───────────────────────────────────────────────────────────
 
@@ -404,218 +388,73 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── Album grid ──────────────────────────────────────────────────── */}
+        {/* ── Album grid — responsive 2/3/4 cols ────────────────────────── */}
         <div
-          className="scrollbar-hide"
-          style={{ flex: 1, overflowY: "auto", overscrollBehaviorY: "contain" }}
+          className="scrollbar-hide grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+          style={{
+            flex: 1, overflowY: "auto", overscrollBehaviorY: "contain",
+            gap: 10, padding: "4px 14px 24px", alignContent: "start",
+          }}
         >
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: 8,
-            padding: "4px 12px 24px",
-          }}>
-            {displayed.length === 0 ? (
-              <div style={{
-                gridColumn: "span 2", padding: "80px 20px",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
-              }}>
-                <Disc3 size={40} strokeWidth={1} style={{ color: "#2a1f10" }} />
-                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#2a1f10", letterSpacing: "0.15em" }}>
-                  NO RECORDS FOUND
-                </p>
-              </div>
-            ) : (
-              displayed.map((record, i) => {
-                const wide      = isWideCard(i);
-                const isHero    = i === 0;
-                const isHovered = hoveredId === record.discogs_id;
-                const isNowPlay = record.discogs_id === nowPlayingId;
-                const playData  = plays[record.discogs_id];
-                const count     = playData?.play_count ?? 0;
-                const isEditing = editingId === record.discogs_id;
-                const imgUrl    = `/api/image?url=${encodeURIComponent(record.cover_url)}`;
+          {displayed.length === 0 ? (
+            <div style={{
+              gridColumn: "1 / -1", padding: "80px 20px",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+            }}>
+              <Disc3 size={40} strokeWidth={1} style={{ color: "#2a1f10" }} />
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#2a1f10", letterSpacing: "0.15em" }}>
+                NO RECORDS FOUND
+              </p>
+            </div>
+          ) : (
+            displayed.map((record, i) => {
+              const isNowPlay = record.discogs_id === nowPlayingId;
+              const playData  = plays[record.discogs_id];
+              const count     = playData?.play_count ?? 0;
+              const isEditing = editingId === record.discogs_id;
+              const imgUrl    = `/api/image?url=${encodeURIComponent(record.cover_url)}&size=500`;
 
-                return (
+              return (
+                <div
+                  key={record.discogs_id}
+                  className="album-card"
+                  style={{
+                    cursor: "pointer",
+                    animation: `card-enter 0.5s ${EASE} both`,
+                    animationDelay: `${Math.min(i * 0.042, 0.6)}s`,
+                  }}
+                  onClick={() => { if (!isEditing) openNowPlaying(record); }}
+                >
+                  {/* ── Square image wrapper (hover glow + inner scale via CSS) ── */}
                   <div
-                    key={record.discogs_id}
+                    className="album-art-wrap"
                     style={{
-                      gridColumn:   wide ? "span 2" : "span 1",
-                      aspectRatio:  isHero ? "4/3" : wide ? "5/2" : "1/1",
-                      borderRadius: isHero ? 18 : 14,
                       position:     "relative",
+                      aspectRatio:  "1/1",
+                      borderRadius: 10,
                       overflow:     "hidden",
-                      cursor:       "pointer",
                       border:       isNowPlay
-                        ? `1.5px solid rgba(201,168,76,0.45)`
-                        : "1px solid rgba(255,255,255,0.05)",
-                      animation:    `card-enter 0.55s ${EASE} both`,
-                      animationDelay: `${Math.min(i * 0.048, 0.65)}s`,
-                    }}
-                    onMouseEnter={() => setHoveredId(record.discogs_id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    onClick={() => {
-                      if (isEditing) return;
-                      openNowPlaying(record);
+                        ? `1.5px solid rgba(201,168,76,0.6)`
+                        : "1px solid rgba(255,255,255,0.06)",
                     }}
                   >
-                    {/* ── Background album art ── */}
                     <img
                       src={imgUrl}
                       alt={record.title}
                       draggable={false}
-                      style={{
-                        position:   "absolute",
-                        inset:      0,
-                        width:      "100%",
-                        height:     "100%",
-                        objectFit:  "cover",
-                        transition: "transform 0.5s ease, filter 0.5s ease",
-                        transform:  isHovered ? "scale(1.07)" : "scale(1)",
-                        filter:     isHovered ? "brightness(0.2) saturate(0.4)" : "brightness(1)",
-                      }}
+                      className="album-art-img"
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                     />
 
-                    {/* ── Frosted-glass hover overlay (slides up) ── */}
-                    <div
-                      style={{
-                        position:       "absolute",
-                        inset:          0,
-                        background:     "rgba(10,8,5,0.78)",
-                        backdropFilter: isHovered ? "blur(18px)" : "none",
-                        WebkitBackdropFilter: isHovered ? "blur(18px)" : "none",
-                        display:        "flex",
-                        flexDirection:  "column",
-                        alignItems:     "center",
-                        justifyContent: "center",
-                        gap:            10,
-                        padding:        14,
-                        opacity:        isHovered ? 1 : 0,
-                        transform:      isHovered ? "translateY(0)" : "translateY(100%)",
-                        transition:     `opacity 0.35s ease, transform 0.38s ${EASE}`,
-                      }}
-                    >
-                      {/* Spinning vinyl disc */}
+                    {/* Inline play-count editor — overlaid on image */}
+                    {isEditing && (
                       <div
                         style={{
-                          width:        wide ? "28%" : "52%",
-                          aspectRatio:  "1/1",
-                          borderRadius: "50%",
-                          overflow:     "hidden",
-                          border:       `2px solid rgba(201,168,76,0.3)`,
-                          boxShadow:    `0 0 0 5px rgba(201,168,76,0.07), 0 14px 40px rgba(0,0,0,0.65)`,
-                          animation:    isHovered ? "vinyl-spin 5s linear infinite" : "none",
-                          flexShrink:   0,
-                        }}
-                      >
-                        <img
-                          src={imgUrl}
-                          alt={record.title}
-                          draggable={false}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      </div>
-
-                      {/* Overlay info */}
-                      <div style={{ textAlign: "center", width: "100%" }}>
-                        <p
-                          className="line-clamp-2"
-                          style={{
-                            fontFamily:  "var(--font-playfair)",
-                            fontSize:    isHero ? "1.05rem" : wide ? "0.9rem" : "0.82rem",
-                            fontWeight:  700,
-                            color:       "#f5f0e8",
-                            lineHeight:  1.25,
-                          }}
-                        >
-                          {record.title}
-                        </p>
-                        <p
-                          className="line-clamp-1"
-                          style={{
-                            fontFamily:    "var(--font-mono)",
-                            fontSize:      "0.58rem",
-                            color:         GOLD,
-                            marginTop:     4,
-                            letterSpacing: "0.1em",
-                          }}
-                        >
-                          {record.artist.toUpperCase()}
-                        </p>
-                        <p style={{
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.52rem",
-                          color:         "#5a4828",
-                          marginTop:     5,
-                          letterSpacing: "0.06em",
-                        }}>
-                          {count > 0 ? `${count}× plays` : "— plays"}
-                          {playData?.last_played ? ` · ${formatDate(playData.last_played)}` : ""}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* ── Default bottom info (hidden on hover) ── */}
-                    <div
-                      style={{
-                        position:   "absolute",
-                        bottom:     0, left: 0, right: 0,
-                        background: "linear-gradient(to top, rgba(10,8,5,0.96) 0%, rgba(10,8,5,0.5) 55%, transparent 100%)",
-                        padding:    isHero ? "28px 14px 14px" : "20px 10px 10px",
-                        transition: "opacity 0.3s ease",
-                        opacity:    isHovered ? 0 : 1,
-                        pointerEvents: "none",
-                      }}
-                    >
-                      <p
-                        className="line-clamp-2"
-                        style={{
-                          fontFamily:  isHero ? "var(--font-playfair)" : "inherit",
-                          fontSize:    isHero ? "1rem" : wide ? "0.8rem" : "0.72rem",
-                          fontWeight:  isHero ? 700 : 600,
-                          color:       "#f5f0e8",
-                          lineHeight:  1.25,
-                        }}
-                      >
-                        {record.title}
-                      </p>
-                      <p
-                        className="line-clamp-1"
-                        style={{
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.56rem",
-                          color:         "rgba(245,240,232,0.38)",
-                          marginTop:     3,
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        {record.artist}
-                      </p>
-                      {(isHero || wide) && count > 0 && (
-                        <p style={{
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.52rem",
-                          color:         GOLD,
-                          marginTop:     4,
-                          letterSpacing: "0.1em",
-                          opacity:       0.8,
-                        }}>
-                          {count}× plays
-                        </p>
-                      )}
-                    </div>
-
-                    {/* ── Play count badge — top right ── */}
-                    {isEditing ? (
-                      <div
-                        style={{
-                          position: "absolute", top: 8, right: 8,
-                          display: "flex", alignItems: "center", gap: 4,
-                          background: "rgba(12,10,7,0.96)",
-                          backdropFilter: "blur(10px)",
-                          border: `1px solid rgba(201,168,76,0.28)`,
-                          borderRadius: 10,
-                          padding: "6px 8px",
+                          position: "absolute", inset: 0,
+                          display: "flex", flexDirection: "column",
+                          alignItems: "center", justifyContent: "center", gap: 8,
+                          background: "rgba(10,8,5,0.9)",
+                          backdropFilter: "blur(12px)",
                           zIndex: 10,
                         }}
                         onClick={e => e.stopPropagation()}
@@ -629,26 +468,30 @@ export default function Home() {
                             if (e.key === "Escape") setEditingId(null);
                           }}
                           style={{
-                            width: 40, background: "transparent", color: "#f5f0e8",
-                            fontSize: "0.72rem", textAlign: "center",
-                            border: "none", outline: "none",
-                            fontFamily: "var(--font-mono)",
+                            width: 64, background: "rgba(255,255,255,0.06)",
+                            color: "#f5f0e8", fontSize: "1.1rem",
+                            textAlign: "center", border: `1px solid rgba(201,168,76,0.3)`,
+                            borderRadius: 8, padding: "6px 4px",
+                            outline: "none", fontFamily: "var(--font-mono)", fontWeight: 700,
                           }}
                           autoFocus
                         />
-                        <button onClick={saveEdit} style={{ color: GOLD, fontSize: "0.75rem", fontWeight: 700, background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
-                        <button onClick={() => setEditingId(null)} style={{ color: "#4a3a1a", fontSize: "0.75rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "0.9rem", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }}>SAVE</button>
+                          <button onClick={() => setEditingId(null)} style={{ color: "#4a3a1a", fontSize: "0.9rem", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }}>CANCEL</button>
+                        </div>
                       </div>
-                    ) : count > 0 && (
+                    )}
+
+                    {/* Play count badge — top right */}
+                    {!isEditing && count > 0 && (
                       <div
                         style={{
-                          position: "absolute", top: 8, right: 8,
-                          background: "rgba(12,10,7,0.72)",
-                          backdropFilter: "blur(8px)",
-                          borderRadius: 999,
-                          padding: "3px 8px",
-                          cursor: "pointer",
-                          zIndex: 10,
+                          position: "absolute", top: 6, right: 6,
+                          background: "rgba(10,8,5,0.75)",
+                          backdropFilter: "blur(6px)",
+                          borderRadius: 999, padding: "2px 7px",
+                          cursor: "pointer", zIndex: 5,
                         }}
                         onClick={e => {
                           e.stopPropagation();
@@ -656,49 +499,63 @@ export default function Home() {
                         }}
                       >
                         <span style={{
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.52rem",
-                          color:         "rgba(201,168,76,0.75)",
-                          letterSpacing: "0.05em",
+                          fontFamily: "var(--font-mono)", fontSize: "0.5rem",
+                          color: "rgba(201,168,76,0.8)", letterSpacing: "0.05em",
                         }}>
                           {count}×
                         </span>
                       </div>
                     )}
 
-                    {/* ── Now Playing badge — top left ── */}
+                    {/* Now Playing badge — top left */}
                     {isNowPlay && (
                       <div
                         style={{
-                          position:    "absolute", top: 8, left: 8,
-                          display:     "flex", alignItems: "center", gap: 5,
-                          background:  GOLD,
-                          borderRadius: 999,
-                          padding:     "4px 10px",
-                          pointerEvents: "none",
-                          zIndex: 10,
+                          position: "absolute", top: 6, left: 6,
+                          display: "flex", alignItems: "center", gap: 4,
+                          background: GOLD, borderRadius: 999, padding: "3px 8px",
+                          pointerEvents: "none", zIndex: 5,
                         }}
                       >
-                        <span
-                          className="now-playing-dot"
-                          style={{ width: 5, height: 5, borderRadius: "50%", background: "#0c0a07", flexShrink: 0, display: "block" }}
-                        />
-                        <span style={{
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.48rem",
-                          fontWeight:    700,
-                          color:         "#0c0a07",
-                          letterSpacing: "0.15em",
-                        }}>
+                        <span className="now-playing-dot" style={{ width: 5, height: 5, borderRadius: "50%", background: "#0c0a07", flexShrink: 0, display: "block" }} />
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.44rem", fontWeight: 700, color: "#0c0a07", letterSpacing: "0.15em" }}>
                           NOW PLAYING
                         </span>
                       </div>
                     )}
                   </div>
-                );
-              })
-            )}
-          </div>
+
+                  {/* ── Title + artist below image ── */}
+                  <div style={{ padding: "6px 2px 2px" }}>
+                    <p
+                      className="line-clamp-1"
+                      style={{
+                        fontFamily: "var(--font-playfair)",
+                        fontSize:   "0.8rem",
+                        fontWeight: 700,
+                        color:      "#f5f0e8",
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      {record.title}
+                    </p>
+                    <p
+                      className="line-clamp-1"
+                      style={{
+                        fontFamily:    "var(--font-mono)",
+                        fontSize:      "0.55rem",
+                        color:         "#5a4828",
+                        marginTop:     2,
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {record.artist}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* ── Premium Now Playing bar ─────────────────────────────────────── */}

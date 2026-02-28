@@ -11,22 +11,30 @@ export async function GET() {
     return NextResponse.json({ error: 'DISCOGS_TOKEN not set' }, { status: 400 });
   }
 
-  const url = `https://api.discogs.com/users/${username}/collection/folders/0/releases?per_page=100&sort=added&sort_order=desc`;
+  const headers = {
+    'User-Agent': 'SpinWatcher/2.0',
+    Authorization: `Discogs token=${token}`,
+  };
 
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'SpinWatcher/2.0',
-      Authorization: `Discogs token=${token}`,
-    },
-  });
+  // Fetch all pages (Discogs max per_page=100)
+  const allItems: Record<string, unknown>[] = [];
+  let page = 1;
+  let totalPages = 1;
 
-  if (!response.ok) {
-    return NextResponse.json({ error: 'Discogs API error' }, { status: response.status });
-  }
+  do {
+    const url = `https://api.discogs.com/users/${username}/collection/folders/0/releases?per_page=100&page=${page}&sort=added&sort_order=desc`;
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      return NextResponse.json({ error: 'Discogs API error' }, { status: response.status });
+    }
+    const data = await response.json();
+    allItems.push(...(data.releases as Record<string, unknown>[]));
+    totalPages = (data.pagination as { pages: number }).pages;
+    page++;
+  } while (page <= totalPages);
 
-  const data = await response.json();
   const releases: Array<{ discogs_id: string; title: string; artist: string; cover_url: string }> =
-    data.releases.map((item: Record<string, unknown>) => {
+    allItems.map((item) => {
       const info = item.basic_information as Record<string, unknown>;
       const artists = info.artists as Array<{ name: string }>;
       return {
