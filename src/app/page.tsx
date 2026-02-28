@@ -5,17 +5,24 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
 } from "react";
+import { FixedSizeList } from "react-window";
 import { RefreshCw, Search, X, Disc3, ArrowLeft, Play, Square } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RecordData {
   discogs_id: string;
-  title: string;
-  artist: string;
-  cover_url: string;
-  added_at: string;
+  title:      string;
+  artist:     string;
+  cover_url:  string;
+  added_at:   string;
+  genres:     string[];
+  styles:     string[];
+  year:       number | null;
+  label:      string | null;
+  format:     string | null;
 }
 
 interface PlayData {
@@ -33,7 +40,9 @@ interface AlbumDetails {
   runtime:   string;
 }
 
-type SortKey = "date_added" | "artist" | "title" | "most_played" | "recently_played";
+type SortKey =
+  | "date_added" | "artist" | "title" | "most_played" | "recently_played"
+  | "year_asc"   | "year_desc" | "genre_az" | "format_az";
 type AppMode = "browse" | "now-playing";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -44,13 +53,216 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "title",           label: "A–Z Title"   },
   { key: "most_played",     label: "Most Played" },
   { key: "recently_played", label: "Last Played" },
+  { key: "year_desc",       label: "Year ↓"      },
+  { key: "year_asc",        label: "Year ↑"      },
+  { key: "genre_az",        label: "Genre A–Z"   },
+  { key: "format_az",       label: "Format"      },
 ];
 
 const EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
 const GOLD = "#C9A84C";
 
-// Durations for waveform bars — varied so they feel organic
 const WAVE_DURATIONS = [0.7, 0.5, 0.9, 0.6, 0.8, 0.55, 0.75, 0.95, 0.6, 0.85, 0.7, 0.5, 0.9, 0.65, 0.8, 0.55];
+
+// Grid layout constants
+const HGAP          = 10;
+const PAD           = 14;
+const TEXT_HEIGHT   = 64;  // title + artist + genre tag + padding
+const NP_BAR_HEIGHT = 82;  // height to subtract for persistent NP bar
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function parseRecords(raw: unknown[]): RecordData[] {
+  return (raw as Array<Record<string, unknown>>).map(r => ({
+    discogs_id: String(r.discogs_id ?? ""),
+    title:      String(r.title ?? ""),
+    artist:     String(r.artist ?? ""),
+    cover_url:  String(r.cover_url ?? ""),
+    added_at:   String(r.added_at ?? ""),
+    genres:     JSON.parse(typeof r.genres === "string" ? r.genres : "[]"),
+    styles:     JSON.parse(typeof r.styles === "string" ? r.styles : "[]"),
+    year:       (r.year as number | null) ?? null,
+    label:      (r.label as string | null) ?? null,
+    format:     (r.format as string | null) ?? null,
+  }));
+}
+
+// ─── VinylPlaceholder ─────────────────────────────────────────────────────────
+
+function VinylPlaceholder() {
+  return (
+    <div style={{
+      width: "100%", height: "100%",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(255,255,255,0.02)",
+    }}>
+      <Disc3 size={36} strokeWidth={1} style={{ color: "#2a1f10" }} />
+    </div>
+  );
+}
+
+// ─── AlbumCard (memoized) ─────────────────────────────────────────────────────
+
+interface AlbumCardProps {
+  record:      RecordData;
+  width:       number;
+  globalIndex: number;
+  isNowPlay:   boolean;
+  playData:    PlayData | undefined;
+  isEditing:   boolean;
+  imgError:    boolean;
+  editValue:   string;
+  onOpen:            (r: RecordData) => void;
+  onOpenEditor:      (id: string, count: number) => void;
+  onSaveEdit:        () => void;
+  onCancelEdit:      () => void;
+  onEditValueChange: (val: string) => void;
+  onImgError:        (id: string) => void;
+}
+
+const AlbumCard = React.memo(function AlbumCard({
+  record, width, globalIndex,
+  isNowPlay, playData, isEditing, imgError, editValue,
+  onOpen, onOpenEditor, onSaveEdit, onCancelEdit, onEditValueChange, onImgError,
+}: AlbumCardProps) {
+  const count  = playData?.play_count ?? 0;
+  const imgUrl = record.cover_url
+    ? `/api/image?url=${encodeURIComponent(record.cover_url)}&size=500`
+    : "";
+
+  return (
+    <div
+      className="album-card"
+      style={{
+        width, flexShrink: 0, cursor: "pointer",
+        animation: `card-enter 0.2s ${EASE} both`,
+        animationDelay: `${Math.min(globalIndex * 0.015, 0.25)}s`,
+      }}
+      onClick={() => { if (!isEditing) onOpen(record); }}
+    >
+      {/* Square image wrapper */}
+      <div
+        className="album-art-wrap"
+        style={{
+          position: "relative", width, height: width,
+          borderRadius: 10, overflow: "hidden",
+          border: isNowPlay
+            ? "1.5px solid rgba(201,168,76,0.6)"
+            : "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        {imgError || !record.cover_url ? (
+          <VinylPlaceholder />
+        ) : (
+          <img
+            src={imgUrl}
+            alt={record.title}
+            loading="lazy"
+            draggable={false}
+            className="album-art-img"
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            onError={() => onImgError(record.discogs_id)}
+          />
+        )}
+
+        {/* Hover play icon (CSS-only via globals.css) */}
+        {!isEditing && (
+          <div className="album-hover-play">
+            <Play size={18} fill={GOLD} color={GOLD} />
+          </div>
+        )}
+
+        {/* Inline play-count editor */}
+        {isEditing && (
+          <div
+            style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: 8,
+              background: "rgba(10,8,5,0.9)", backdropFilter: "blur(12px)", zIndex: 10,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <input
+              type="number" inputMode="numeric" min="0" max="9999"
+              value={editValue}
+              onChange={e => onEditValueChange(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter")  onSaveEdit();
+                if (e.key === "Escape") onCancelEdit();
+              }}
+              style={{
+                width: 64, background: "rgba(255,255,255,0.06)",
+                color: "#f5f0e8", fontSize: "1.1rem",
+                textAlign: "center", border: "1px solid rgba(201,168,76,0.3)",
+                borderRadius: 8, padding: "6px 4px",
+                outline: "none", fontFamily: "var(--font-mono)", fontWeight: 700,
+              }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: 12 }}>
+              <button onClick={onSaveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "0.9rem", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }}>SAVE</button>
+              <button onClick={onCancelEdit} style={{ color: "#4a3a1a", fontSize: "0.9rem", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }}>CANCEL</button>
+            </div>
+          </div>
+        )}
+
+        {/* Play count badge */}
+        {!isEditing && count > 0 && (
+          <div
+            style={{
+              position: "absolute", top: 6, right: 6,
+              background: "rgba(10,8,5,0.75)", backdropFilter: "blur(6px)",
+              borderRadius: 999, padding: "2px 7px", cursor: "pointer", zIndex: 5,
+            }}
+            onClick={e => { e.stopPropagation(); onOpenEditor(record.discogs_id, count); }}
+          >
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.5rem", color: "rgba(201,168,76,0.8)", letterSpacing: "0.05em" }}>
+              {count}×
+            </span>
+          </div>
+        )}
+
+        {/* Now Playing pulse dot */}
+        {isNowPlay && (
+          <span
+            className="now-playing-dot"
+            style={{
+              position: "absolute", top: 7, left: 7,
+              width: 9, height: 9, borderRadius: "50%",
+              background: GOLD, border: "1.5px solid rgba(10,8,5,0.75)",
+              display: "block", pointerEvents: "none", zIndex: 5,
+            }}
+          />
+        )}
+      </div>
+
+      {/* Title + artist + genre tags below image */}
+      <div style={{ padding: "6px 2px 2px" }}>
+        <p className="line-clamp-1" style={{
+          fontFamily: "var(--font-playfair)", fontSize: "0.8rem",
+          fontWeight: 700, color: "#f5f0e8", lineHeight: 1.25,
+        }}>
+          {record.title}
+        </p>
+        <p className="line-clamp-1" style={{
+          fontFamily: "var(--font-mono)", fontSize: "0.55rem",
+          color: "#5a4828", marginTop: 2, letterSpacing: "0.04em",
+        }}>
+          {record.artist}
+        </p>
+        {record.genres.length > 0 && (
+          <p className="line-clamp-1" style={{
+            fontFamily: "var(--font-mono)", fontSize: "0.5rem",
+            color: "#3a2c14", marginTop: 3, letterSpacing: "0.04em",
+          }}>
+            {record.genres.slice(0, 2).join(" · ")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+});
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -66,6 +278,8 @@ export default function Home() {
   const [viewingRecord, setViewingRecord]= useState<RecordData | null>(null);
   const [sort,          setSort]         = useState<SortKey>("date_added");
   const [filter,        setFilter]       = useState("");
+  const [selectedGenres,setSelectedGenres]=useState<Set<string>>(new Set());
+  const [imgErrors,     setImgErrors]    = useState<Set<string>>(new Set());
 
   // ── Inline play-count editor ───────────────────────────────────────────────
   const [editingId,  setEditingId]  = useState<string | null>(null);
@@ -75,6 +289,21 @@ export default function Home() {
   const [albumDetails, setAlbumDetails] = useState<AlbumDetails | null>(null);
   const [albumLoading, setAlbumLoading] = useState(false);
   const [isPlaying,    setIsPlaying]    = useState(false);
+
+  // ── Grid container measurement (for react-window) ─────────────────────────
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [containerDims, setContainerDims] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = gridContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      setContainerDims({ w: Math.floor(width), h: Math.floor(height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ── Data loading ───────────────────────────────────────────────────────────
 
@@ -93,7 +322,7 @@ export default function Home() {
       const res = await fetch("/api/sync");
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data)) setRecords(data as RecordData[]);
+      if (Array.isArray(data)) setRecords(parseRecords(data));
     } finally {
       setSyncing(false);
     }
@@ -107,7 +336,7 @@ export default function Home() {
         const res  = await fetch("/api/records");
         const data = res.ok ? await res.json() : [];
         if (Array.isArray(data) && data.length > 0) {
-          setRecords(data as RecordData[]);
+          setRecords(parseRecords(data));
         } else {
           await syncFromDiscogs();
         }
@@ -124,10 +353,21 @@ export default function Home() {
 
   const displayed = useMemo<RecordData[]>(() => {
     const q = filter.trim().toLowerCase();
-    const filtered = q
-      ? records.filter(r =>
-          r.artist.toLowerCase().includes(q) || r.title.toLowerCase().includes(q))
-      : records;
+    let filtered = records;
+
+    if (q) {
+      filtered = filtered.filter(r =>
+        r.artist.toLowerCase().includes(q) ||
+        r.title.toLowerCase().includes(q) ||
+        (r.year !== null && String(r.year).includes(q)) ||
+        (r.label?.toLowerCase().includes(q) ?? false) ||
+        r.genres.some(g => g.toLowerCase().includes(q))
+      );
+    }
+
+    if (selectedGenres.size > 0) {
+      filtered = filtered.filter(r => r.genres.some(g => selectedGenres.has(g)));
+    }
 
     return [...filtered].sort((a, b) => {
       switch (sort) {
@@ -139,10 +379,37 @@ export default function Home() {
           const bt = plays[b.discogs_id]?.last_played ?? "";
           return bt.localeCompare(at);
         }
-        default: return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
+        case "year_asc":        return (a.year ?? 0) - (b.year ?? 0);
+        case "year_desc":       return (b.year ?? 0) - (a.year ?? 0);
+        case "genre_az":        return (a.genres[0] ?? "").localeCompare(b.genres[0] ?? "");
+        case "format_az":       return (a.format ?? "").localeCompare(b.format ?? "");
+        default:                return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
       }
     });
-  }, [records, plays, sort, filter]);
+  }, [records, plays, sort, filter, selectedGenres]);
+
+  // ── Derived: unique genres across collection ───────────────────────────────
+
+  const allGenres = useMemo(
+    () => [...new Set(records.flatMap(r => r.genres))].sort(),
+    [records]
+  );
+
+  // ── Grid layout ───────────────────────────────────────────────────────────
+
+  const colCount  = containerDims.w < 768 ? 2 : containerDims.w < 1024 ? 3 : 4;
+  const cardWidth = containerDims.w > 0
+    ? Math.floor((containerDims.w - PAD * 2 - HGAP * (colCount - 1)) / colCount)
+    : 150;
+  const rowHeight = cardWidth + TEXT_HEIGHT;
+
+  const rows = useMemo(() => {
+    const result: RecordData[][] = [];
+    for (let i = 0; i < displayed.length; i += colCount) {
+      result.push(displayed.slice(i, i + colCount));
+    }
+    return result;
+  }, [displayed, colCount]);
 
   // ── Album details fetch ────────────────────────────────────────────────────
 
@@ -190,7 +457,6 @@ export default function Home() {
     setMode("browse");
   }, []);
 
-  // Ends playback entirely — clears bar, resets state, returns to browse
   const stopPlaying = useCallback(() => {
     setNowPlayingId(null);
     setIsPlaying(false);
@@ -198,7 +464,6 @@ export default function Home() {
     setMode("browse");
   }, []);
 
-  // Opens NP playing sub-panel (spinning disc + waveform) directly
   const openPlayingView = useCallback((record: RecordData) => {
     setEditingId(null);
     setViewingRecord(record);
@@ -213,6 +478,8 @@ export default function Home() {
     setEditingId(id);
     setEditValue(String(currentCount));
   }, []);
+
+  const cancelEdit = useCallback(() => setEditingId(null), []);
 
   const saveEdit = useCallback(async () => {
     if (editingId === null) return;
@@ -237,29 +504,72 @@ export default function Home() {
     }
   }, [editingId, editValue]);
 
+  // ── Genre filter ──────────────────────────────────────────────────────────
+
+  const toggleGenre = useCallback((g: string) => {
+    setSelectedGenres(prev => {
+      const next = new Set(prev);
+      next.has(g) ? next.delete(g) : next.add(g);
+      return next;
+    });
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFilter("");
+    setSelectedGenres(new Set());
+  }, []);
+
+  // ── Image error tracking ──────────────────────────────────────────────────
+
+  const addImgError = useCallback((id: string) => {
+    setImgErrors(prev => { const s = new Set(prev); s.add(id); return s; });
+  }, []);
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const nowPlayingRec = nowPlayingId ? records.find(r => r.discogs_id === nowPlayingId) : null;
-  const nowPlayData   = nowPlayingId ? plays[nowPlayingId] : null;
-  const npPlayData    = viewingRecord ? plays[viewingRecord.discogs_id] : null;
-  const npIsEditing   = editingId === viewingRecord?.discogs_id;
+  const nowPlayingRec  = nowPlayingId ? records.find(r => r.discogs_id === nowPlayingId) : null;
+  const nowPlayData    = nowPlayingId ? plays[nowPlayingId] : null;
+  const npPlayData     = viewingRecord ? plays[viewingRecord.discogs_id] : null;
+  const npIsEditing    = editingId === viewingRecord?.discogs_id;
+  const isFiltering    = filter.length > 0 || selectedGenres.size > 0;
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  // ── Loading skeleton ───────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div style={{
-        display: "flex", flexDirection: "column", alignItems: "center",
-        justifyContent: "center", height: "100dvh", background: "#0c0a07",
-      }}>
-        <Disc3 className="vinyl-spin" size={40} strokeWidth={1}
-          style={{ color: "#3a2c14", marginBottom: 20 }} />
-        <p style={{
-          fontFamily: "var(--font-mono)", fontSize: "0.6rem",
-          letterSpacing: "0.3em", color: "#3a2c14", textTransform: "uppercase",
-        }}>
-          Syncing Collection
-        </p>
+      <div style={{ background: "#0c0a07", minHeight: "100dvh" }}>
+        {/* Header shell */}
+        <div style={{ padding: "max(env(safe-area-inset-top), 14px) 18px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12 }}>
+            <h1 style={{
+              fontFamily: "var(--font-playfair)", fontWeight: 900, fontSize: "0.9rem",
+              letterSpacing: "0.28em", color: "#f5f0e8", textTransform: "uppercase",
+            }}>
+              SpinWatcher
+            </h1>
+            <div style={{ width: 42, height: 22, background: "rgba(255,255,255,0.04)", borderRadius: 999 }} />
+          </div>
+          {/* Search skeleton */}
+          <div style={{ height: 38, background: "rgba(255,255,255,0.04)", borderRadius: 12, marginBottom: 10 }} />
+          {/* Sort pills skeleton */}
+          <div style={{ display: "flex", gap: 6, paddingBottom: 12 }}>
+            {[80, 72, 68, 80, 72].map((w, i) => (
+              <div key={i} className="skeleton-card" style={{ height: 26, width: w, borderRadius: 999 }}>
+                <div style={{ height: "100%", borderRadius: 999 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Grid skeleton */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4" style={{ gap: 10, padding: "4px 14px" }}>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="skeleton-card" style={{ animationDelay: `${i * 0.06}s` }}>
+              <div style={{ aspectRatio: "1/1", borderRadius: 10 }} />
+              <div style={{ height: 13, width: "80%", borderRadius: 6, marginTop: 8 }} />
+              <div style={{ height: 10, width: "55%", borderRadius: 6, marginTop: 5 }} />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -291,40 +601,28 @@ export default function Home() {
 
             {/* Logotype */}
             <h1 style={{
-              fontFamily: "var(--font-playfair)",
-              fontWeight: 900,
-              fontSize: "0.9rem",
-              letterSpacing: "0.28em",
-              color: "#f5f0e8",
-              textTransform: "uppercase",
-              lineHeight: 1,
+              fontFamily: "var(--font-playfair)", fontWeight: 900, fontSize: "0.9rem",
+              letterSpacing: "0.28em", color: "#f5f0e8",
+              textTransform: "uppercase", lineHeight: 1,
             }}>
               SpinWatcher
             </h1>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {/* Count badge */}
-              {displayed.length > 0 && (
-                <div style={{
-                  background: "rgba(201,168,76,0.08)",
-                  border: "1px solid rgba(201,168,76,0.22)",
-                  borderRadius: 999,
-                  padding: "3px 10px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}>
-                  <span style={{
-                    fontFamily: "var(--font-mono)", fontSize: "0.58rem",
-                    color: GOLD, letterSpacing: "0.05em", fontWeight: 700,
-                  }}>
-                    {displayed.length}
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#3a2c14" }}>
-                    / {records.length}
-                  </span>
-                </div>
-              )}
+              <div style={{
+                background: "rgba(201,168,76,0.08)",
+                border: "1px solid rgba(201,168,76,0.22)",
+                borderRadius: 999, padding: "3px 10px",
+                display: "flex", alignItems: "center", gap: 4,
+              }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: GOLD, letterSpacing: "0.05em", fontWeight: 700 }}>
+                  {isFiltering ? displayed.length : records.length}
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#3a2c14" }}>
+                  {isFiltering ? `/ ${records.length}` : "records"}
+                </span>
+              </div>
 
               {/* Sync */}
               <button
@@ -355,7 +653,7 @@ export default function Home() {
                 type="text"
                 value={filter}
                 onChange={e => setFilter(e.target.value)}
-                placeholder="Search artists or records…"
+                placeholder="Search artist, title, genre, year…"
                 style={{
                   flex: 1, background: "transparent",
                   fontSize: "0.8rem", color: "#f5f0e8",
@@ -372,10 +670,7 @@ export default function Home() {
           </div>
 
           {/* ── Sort pills ─────────────────────────────────────────────── */}
-          <div className="scrollbar-hide" style={{
-            display: "flex", gap: 6, paddingBottom: 12,
-            overflowX: "auto",
-          }}>
+          <div className="scrollbar-hide" style={{ display: "flex", gap: 6, paddingBottom: 10, overflowX: "auto" }}>
             {SORT_OPTIONS.map(opt => {
               const active = sort === opt.key;
               return (
@@ -383,19 +678,13 @@ export default function Home() {
                   key={opt.key}
                   onClick={() => setSort(opt.key)}
                   style={{
-                    flexShrink: 0,
-                    padding: "4px 13px",
-                    borderRadius: 999,
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "0.6rem",
-                    letterSpacing: "0.08em",
-                    fontWeight: active ? 700 : 400,
+                    flexShrink: 0, padding: "4px 13px", borderRadius: 999,
+                    fontFamily: "var(--font-mono)", fontSize: "0.6rem",
+                    letterSpacing: "0.08em", fontWeight: active ? 700 : 400,
                     background: active ? GOLD : "transparent",
                     color: active ? "#0c0a07" : "#4a3820",
                     border: active ? `1px solid ${GOLD}` : "1px solid rgba(255,255,255,0.07)",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                    whiteSpace: "nowrap",
+                    cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap",
                   }}
                 >
                   {opt.label}
@@ -403,175 +692,107 @@ export default function Home() {
               );
             })}
           </div>
+
+          {/* ── Genre filter pills ─────────────────────────────────────── */}
+          {allGenres.length > 0 && (
+            <div className="scrollbar-hide" style={{ display: "flex", gap: 6, paddingBottom: 12, overflowX: "auto" }}>
+              {allGenres.map(genre => {
+                const active = selectedGenres.has(genre);
+                return (
+                  <button
+                    key={genre}
+                    onClick={() => toggleGenre(genre)}
+                    style={{
+                      flexShrink: 0, padding: "3px 11px", borderRadius: 999,
+                      fontFamily: "var(--font-mono)", fontSize: "0.56rem",
+                      letterSpacing: "0.06em", fontWeight: active ? 700 : 400,
+                      background: active ? "rgba(201,168,76,0.18)" : "transparent",
+                      color: active ? GOLD : "#3a2c14",
+                      border: active ? `1px solid rgba(201,168,76,0.5)` : "1px solid rgba(255,255,255,0.05)",
+                      cursor: "pointer", transition: "all 0.18s ease", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {genre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* ── Album grid — responsive 2/3/4 cols ────────────────────────── */}
+        {/* ── Virtualized album grid ─────────────────────────────────────── */}
         <div
-          className="scrollbar-hide grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
-          style={{
-            flex: 1, overflowY: "auto", overscrollBehaviorY: "contain",
-            gap: 10, padding: "4px 14px calc(72px + max(env(safe-area-inset-bottom), 16px))", alignContent: "start",
-          }}
+          ref={gridContainerRef}
+          className="scrollbar-hide"
+          style={{ flex: 1, overflow: "hidden" }}
         >
           {displayed.length === 0 ? (
+            /* Empty state */
             <div style={{
-              gridColumn: "1 / -1", padding: "80px 20px",
+              padding: "80px 20px",
               display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
             }}>
               <Disc3 size={40} strokeWidth={1} style={{ color: "#2a1f10" }} />
               <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#2a1f10", letterSpacing: "0.15em" }}>
                 NO RECORDS FOUND
               </p>
-            </div>
-          ) : (
-            displayed.map((record, i) => {
-              const isNowPlay = record.discogs_id === nowPlayingId;
-              const playData  = plays[record.discogs_id];
-              const count     = playData?.play_count ?? 0;
-              const isEditing = editingId === record.discogs_id;
-              const imgUrl    = `/api/image?url=${encodeURIComponent(record.cover_url)}&size=500`;
-
-              return (
-                <div
-                  key={record.discogs_id}
-                  className="album-card"
+              {isFiltering && (
+                <button
+                  onClick={clearFilters}
                   style={{
-                    cursor: "pointer",
-                    animation: `card-enter 0.5s ${EASE} both`,
-                    animationDelay: `${Math.min(i * 0.042, 0.6)}s`,
+                    fontFamily: "var(--font-mono)", fontSize: "0.6rem",
+                    color: GOLD, background: "transparent",
+                    border: "1px solid rgba(201,168,76,0.3)",
+                    borderRadius: 999, padding: "5px 16px",
+                    cursor: "pointer", letterSpacing: "0.1em",
+                    marginTop: 4,
                   }}
-                  onClick={() => { if (!isEditing) openNowPlaying(record); }}
                 >
-                  {/* ── Square image wrapper (hover glow + inner scale via CSS) ── */}
-                  <div
-                    className="album-art-wrap"
-                    style={{
-                      position:     "relative",
-                      aspectRatio:  "1/1",
-                      borderRadius: 10,
-                      overflow:     "hidden",
-                      border:       isNowPlay
-                        ? `1.5px solid rgba(201,168,76,0.6)`
-                        : "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <img
-                      src={imgUrl}
-                      alt={record.title}
-                      draggable={false}
-                      className="album-art-img"
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    />
-
-                    {/* Inline play-count editor — overlaid on image */}
-                    {isEditing && (
-                      <div
-                        style={{
-                          position: "absolute", inset: 0,
-                          display: "flex", flexDirection: "column",
-                          alignItems: "center", justifyContent: "center", gap: 8,
-                          background: "rgba(10,8,5,0.9)",
-                          backdropFilter: "blur(12px)",
-                          zIndex: 10,
-                        }}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <input
-                          type="number" inputMode="numeric" min="0" max="9999"
-                          value={editValue}
-                          onChange={e => setEditValue(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter")  saveEdit();
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          style={{
-                            width: 64, background: "rgba(255,255,255,0.06)",
-                            color: "#f5f0e8", fontSize: "1.1rem",
-                            textAlign: "center", border: `1px solid rgba(201,168,76,0.3)`,
-                            borderRadius: 8, padding: "6px 4px",
-                            outline: "none", fontFamily: "var(--font-mono)", fontWeight: 700,
-                          }}
-                          autoFocus
-                        />
-                        <div style={{ display: "flex", gap: 12 }}>
-                          <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "0.9rem", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }}>SAVE</button>
-                          <button onClick={() => setEditingId(null)} style={{ color: "#4a3a1a", fontSize: "0.9rem", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }}>CANCEL</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Play count badge — top right */}
-                    {!isEditing && count > 0 && (
-                      <div
-                        style={{
-                          position: "absolute", top: 6, right: 6,
-                          background: "rgba(10,8,5,0.75)",
-                          backdropFilter: "blur(6px)",
-                          borderRadius: 999, padding: "2px 7px",
-                          cursor: "pointer", zIndex: 5,
-                        }}
-                        onClick={e => {
-                          e.stopPropagation();
-                          openEditor(record.discogs_id, count);
-                        }}
-                      >
-                        <span style={{
-                          fontFamily: "var(--font-mono)", fontSize: "0.5rem",
-                          color: "rgba(201,168,76,0.8)", letterSpacing: "0.05em",
-                        }}>
-                          {count}×
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Now Playing indicator — subtle pulsing dot */}
-                    {isNowPlay && (
-                      <span
-                        className="now-playing-dot"
-                        style={{
-                          position:     "absolute", top: 7, left: 7,
-                          width:        9, height: 9, borderRadius: "50%",
-                          background:   GOLD,
-                          border:       "1.5px solid rgba(10,8,5,0.75)",
-                          display:      "block",
-                          pointerEvents:"none",
-                          zIndex:       5,
-                        }}
+                  CLEAR FILTERS
+                </button>
+              )}
+            </div>
+          ) : containerDims.w > 0 && containerDims.h > 0 ? (
+            <FixedSizeList
+              height={containerDims.h - NP_BAR_HEIGHT}
+              width={containerDims.w}
+              itemCount={rows.length}
+              itemSize={rowHeight}
+              overscanCount={3}
+              className="scrollbar-hide"
+            >
+              {({ index, style }: { index: number; style: React.CSSProperties }) => (
+                <div style={{ ...style, display: "flex", gap: HGAP, padding: `4px ${PAD}px 0`, alignItems: "flex-start" }}>
+                  {rows[index].map((record, j) => {
+                    const globalIndex = index * colCount + j;
+                    return (
+                      <AlbumCard
+                        key={record.discogs_id}
+                        record={record}
+                        width={cardWidth}
+                        globalIndex={globalIndex}
+                        isNowPlay={record.discogs_id === nowPlayingId}
+                        playData={plays[record.discogs_id]}
+                        isEditing={editingId === record.discogs_id}
+                        imgError={imgErrors.has(record.discogs_id)}
+                        editValue={editValue}
+                        onOpen={openNowPlaying}
+                        onOpenEditor={openEditor}
+                        onSaveEdit={saveEdit}
+                        onCancelEdit={cancelEdit}
+                        onEditValueChange={setEditValue}
+                        onImgError={addImgError}
                       />
-                    )}
-                  </div>
-
-                  {/* ── Title + artist below image ── */}
-                  <div style={{ padding: "6px 2px 2px" }}>
-                    <p
-                      className="line-clamp-1"
-                      style={{
-                        fontFamily: "var(--font-playfair)",
-                        fontSize:   "0.8rem",
-                        fontWeight: 700,
-                        color:      "#f5f0e8",
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      {record.title}
-                    </p>
-                    <p
-                      className="line-clamp-1"
-                      style={{
-                        fontFamily:    "var(--font-mono)",
-                        fontSize:      "0.55rem",
-                        color:         "#5a4828",
-                        marginTop:     2,
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      {record.artist}
-                    </p>
-                  </div>
+                    );
+                  })}
+                  {/* Fill empty slots in last row */}
+                  {Array.from({ length: colCount - rows[index].length }).map((_, k) => (
+                    <div key={k} style={{ width: cardWidth, flexShrink: 0 }} />
+                  ))}
                 </div>
-              );
-            })
-          )}
+              )}
+            </FixedSizeList>
+          ) : null}
         </div>
 
       </div>
@@ -609,10 +830,8 @@ export default function Home() {
               {/* Album art */}
               <div
                 style={{
-                  width:     "min(80vw, 360px)",
-                  height:    "min(80vw, 360px)",
-                  borderRadius: 20,
-                  overflow:  "hidden",
+                  width: "min(80vw, 360px)", height: "min(80vw, 360px)",
+                  borderRadius: 20, overflow: "hidden",
                   background: "rgba(255,255,255,0.03)",
                   boxShadow: "0 28px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.05)",
                   flexShrink: 0,
@@ -633,22 +852,16 @@ export default function Home() {
                 <p
                   className="line-clamp-2"
                   style={{
-                    fontFamily: "var(--font-playfair)",
-                    fontSize:   "1.6rem",
-                    fontWeight: 900,
-                    letterSpacing: "-0.01em",
-                    lineHeight: 1.15,
-                    color: "#f5f0e8",
+                    fontFamily: "var(--font-playfair)", fontSize: "1.6rem",
+                    fontWeight: 900, letterSpacing: "-0.01em",
+                    lineHeight: 1.15, color: "#f5f0e8",
                   }}
                 >
                   {viewingRecord?.title ?? ""}
                 </p>
                 <p style={{
-                  fontFamily:    "var(--font-mono)",
-                  fontSize:      "0.7rem",
-                  color:         "#5a4828",
-                  marginTop:     8,
-                  letterSpacing: "0.1em",
+                  fontFamily: "var(--font-mono)", fontSize: "0.7rem",
+                  color: "#5a4828", marginTop: 8, letterSpacing: "0.1em",
                 }}>
                   {viewingRecord?.artist?.toUpperCase() ?? ""}
                 </p>
@@ -679,12 +892,9 @@ export default function Home() {
                   {/* Year · Label */}
                   {(albumDetails.year || albumDetails.label) && (
                     <p style={{
-                      textAlign:     "center",
-                      fontFamily:    "var(--font-mono)",
-                      fontSize:      "0.6rem",
-                      color:         "#5a4828",
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
+                      textAlign: "center", fontFamily: "var(--font-mono)",
+                      fontSize: "0.6rem", color: "#5a4828",
+                      letterSpacing: "0.12em", textTransform: "uppercase",
                     }}>
                       {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
                     </p>
@@ -695,28 +905,22 @@ export default function Home() {
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
                       {albumDetails.genres.map(g => (
                         <span key={g} style={{
-                          padding:       "4px 10px",
-                          background:    "rgba(201,168,76,0.07)",
-                          border:        "1px solid rgba(201,168,76,0.2)",
-                          borderRadius:  999,
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.56rem",
-                          color:         GOLD,
-                          letterSpacing: "0.06em",
+                          padding: "4px 10px",
+                          background: "rgba(201,168,76,0.07)",
+                          border: "1px solid rgba(201,168,76,0.2)",
+                          borderRadius: 999, fontFamily: "var(--font-mono)",
+                          fontSize: "0.56rem", color: GOLD, letterSpacing: "0.06em",
                         }}>
                           {g}
                         </span>
                       ))}
                       {albumDetails.styles.map(s => (
                         <span key={s} style={{
-                          padding:       "4px 10px",
-                          background:    "rgba(255,255,255,0.03)",
-                          border:        "1px solid rgba(255,255,255,0.07)",
-                          borderRadius:  999,
-                          fontFamily:    "var(--font-mono)",
-                          fontSize:      "0.56rem",
-                          color:         "#4a3820",
-                          letterSpacing: "0.06em",
+                          padding: "4px 10px",
+                          background: "rgba(255,255,255,0.03)",
+                          border: "1px solid rgba(255,255,255,0.07)",
+                          borderRadius: 999, fontFamily: "var(--font-mono)",
+                          fontSize: "0.56rem", color: "#4a3820", letterSpacing: "0.06em",
                         }}>
                           {s}
                         </span>
@@ -726,62 +930,32 @@ export default function Home() {
 
                   {/* Tracklist */}
                   {albumDetails.tracklist.length > 0 && (
-                    <div style={{
-                      borderRadius: 14,
-                      overflow: "hidden",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                    }}>
+                    <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
                       {albumDetails.tracklist.map((track, i) => (
                         <div
                           key={i}
                           style={{
-                            display:     "flex",
-                            alignItems:  "baseline",
-                            gap:         10,
-                            padding:     "9px 14px",
+                            display: "flex", alignItems: "baseline", gap: 10, padding: "9px 14px",
                             borderBottom: i < albumDetails.tracklist.length - 1
-                              ? "1px solid rgba(255,255,255,0.04)"
-                              : "none",
+                              ? "1px solid rgba(255,255,255,0.04)" : "none",
                           }}
                         >
-                          <span style={{
-                            fontFamily: "var(--font-mono)",
-                            fontSize:   "0.55rem",
-                            color:      "#3a2c14",
-                            width:      18,
-                            flexShrink: 0,
-                            textAlign:  "right",
-                          }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", width: 18, flexShrink: 0, textAlign: "right" }}>
                             {track.position}
                           </span>
                           <span style={{ flex: 1, fontSize: "0.75rem", color: "#c8bfa8", lineHeight: 1.3 }}>
                             {track.title}
                           </span>
                           {track.duration && (
-                            <span style={{
-                              fontFamily: "var(--font-mono)",
-                              fontSize:   "0.55rem",
-                              color:      "#3a2c14",
-                              flexShrink: 0,
-                            }}>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", flexShrink: 0 }}>
                               {track.duration}
                             </span>
                           )}
                         </div>
                       ))}
                       {albumDetails.runtime && (
-                        <div style={{
-                          display:     "flex",
-                          justifyContent: "flex-end",
-                          padding:     "8px 14px",
-                          borderTop:   "1px solid rgba(255,255,255,0.04)",
-                        }}>
-                          <span style={{
-                            fontFamily:    "var(--font-mono)",
-                            fontSize:      "0.55rem",
-                            color:         "#3a2c14",
-                            letterSpacing: "0.08em",
-                          }}>
+                        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", letterSpacing: "0.08em" }}>
                             {albumDetails.runtime} total
                           </span>
                         </div>
@@ -795,13 +969,10 @@ export default function Home() {
               <div>
                 {npIsEditing ? (
                   <div style={{
-                    display:      "flex",
-                    alignItems:   "center",
-                    gap:          10,
-                    background:   "rgba(255,255,255,0.04)",
-                    border:       `1px solid rgba(201,168,76,0.25)`,
-                    borderRadius: 20,
-                    padding:      "10px 16px",
+                    display: "flex", alignItems: "center", gap: 10,
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(201,168,76,0.25)",
+                    borderRadius: 20, padding: "10px 16px",
                   }}>
                     <input
                       type="number" inputMode="numeric" min="0" max="9999"
@@ -827,15 +998,11 @@ export default function Home() {
                   <button
                     onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
                     style={{
-                      display:      "flex",
-                      alignItems:   "center",
-                      gap:          8,
-                      background:   "rgba(255,255,255,0.04)",
-                      border:       "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 999,
-                      padding:      "8px 20px",
-                      cursor:       "pointer",
-                      transition:   "border-color 0.2s, transform 0.15s",
+                      display: "flex", alignItems: "center", gap: 8,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 999, padding: "8px 20px",
+                      cursor: "pointer", transition: "border-color 0.2s, transform 0.15s",
                     }}
                   >
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
@@ -855,22 +1022,13 @@ export default function Home() {
               <button
                 onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
                 style={{
-                  display:      "flex",
-                  alignItems:   "center",
-                  gap:          10,
-                  borderRadius: 999,
-                  padding:      "14px 36px",
-                  fontFamily:   "var(--font-mono)",
-                  fontSize:     "0.7rem",
-                  fontWeight:   700,
-                  letterSpacing:"0.12em",
-                  textTransform:"uppercase",
-                  background:   GOLD,
-                  color:        "#0c0a07",
-                  border:       "none",
-                  cursor:       "pointer",
-                  boxShadow:    `0 8px 32px -4px rgba(201,168,76,0.45)`,
-                  transition:   "transform 0.15s, box-shadow 0.2s",
+                  display: "flex", alignItems: "center", gap: 10,
+                  borderRadius: 999, padding: "14px 36px",
+                  fontFamily: "var(--font-mono)", fontSize: "0.7rem",
+                  fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+                  background: GOLD, color: "#0c0a07", border: "none", cursor: "pointer",
+                  boxShadow: "0 8px 32px -4px rgba(201,168,76,0.45)",
+                  transition: "transform 0.15s, box-shadow 0.2s",
                 }}
               >
                 <Play size={14} fill="#0c0a07" strokeWidth={0} />
@@ -884,30 +1042,24 @@ export default function Home() {
           {/* ── Playing sub-panel (shown when isPlaying) ── */}
           <div
             style={{
-              position:       "absolute",
-              inset:          0,
-              display:        "flex",
-              flexDirection:  "column",
-              alignItems:     "center",
-              justifyContent: "center",
-              gap:            18,
-              padding:        "max(env(safe-area-inset-top), 12px) 28px 28px",
-              opacity:        isPlaying ? 1 : 0,
-              pointerEvents:  (mode === "now-playing" && isPlaying) ? "auto" : "none",
-              transition:     `opacity 0.4s ${EASE}`,
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center",
+              justifyContent: "center", gap: 18,
+              padding: "max(env(safe-area-inset-top), 12px) 28px 28px",
+              opacity:       isPlaying ? 1 : 0,
+              pointerEvents: (mode === "now-playing" && isPlaying) ? "auto" : "none",
+              transition:    `opacity 0.4s ${EASE}`,
             }}
           >
             {/* Spinning vinyl disc */}
             <div
               style={{
-                width:        "min(72vw, 320px)",
-                height:       "min(72vw, 320px)",
-                borderRadius: "50%",
-                overflow:     "hidden",
-                border:       "3px solid rgba(201,168,76,0.22)",
-                boxShadow:    `0 0 0 10px rgba(201,168,76,0.05), 0 30px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.04)`,
-                animation:    "vinyl-spin 4s linear infinite",
-                flexShrink:   0,
+                width: "min(72vw, 320px)", height: "min(72vw, 320px)",
+                borderRadius: "50%", overflow: "hidden",
+                border: "3px solid rgba(201,168,76,0.22)",
+                boxShadow: "0 0 0 10px rgba(201,168,76,0.05), 0 30px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.04)",
+                animation: "vinyl-spin 4s linear infinite",
+                flexShrink: 0,
               }}
             >
               {viewingRecord && (
@@ -926,13 +1078,7 @@ export default function Home() {
                 className="now-playing-dot"
                 style={{ width: 8, height: 8, borderRadius: "50%", background: GOLD, flexShrink: 0, display: "block" }}
               />
-              <span style={{
-                fontFamily:    "var(--font-mono)",
-                fontSize:      "0.62rem",
-                fontWeight:    700,
-                letterSpacing: "0.25em",
-                color:         GOLD,
-              }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.25em", color: GOLD }}>
                 NOW PLAYING
               </span>
             </div>
@@ -942,36 +1088,24 @@ export default function Home() {
               <p
                 className="line-clamp-2"
                 style={{
-                  fontFamily:    "var(--font-playfair)",
-                  fontSize:      "1.4rem",
-                  fontWeight:    900,
-                  letterSpacing: "-0.01em",
-                  lineHeight:    1.2,
-                  color:         "#f5f0e8",
+                  fontFamily: "var(--font-playfair)", fontSize: "1.4rem",
+                  fontWeight: 900, letterSpacing: "-0.01em",
+                  lineHeight: 1.2, color: "#f5f0e8",
                 }}
               >
                 {viewingRecord?.title ?? ""}
               </p>
-              <p style={{
-                fontFamily:    "var(--font-mono)",
-                fontSize:      "0.65rem",
-                color:         "#5a4828",
-                marginTop:     8,
-                letterSpacing: "0.1em",
-              }}>
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#5a4828", marginTop: 8, letterSpacing: "0.1em" }}>
                 {viewingRecord?.artist?.toUpperCase() ?? ""}
               </p>
             </div>
 
             {/* Play count */}
             <div style={{
-              display:      "flex",
-              alignItems:   "center",
-              gap:          8,
-              background:   "rgba(255,255,255,0.04)",
-              border:       "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 999,
-              padding:      "8px 20px",
+              display: "flex", alignItems: "center", gap: 8,
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 999, padding: "8px 20px",
             }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
                 {npPlayData?.play_count ?? 0}
@@ -997,30 +1131,20 @@ export default function Home() {
         {/* ── Bottom nav bar (frosted) ── */}
         <div
           style={{
-            flexShrink:           0,
-            display:              "flex",
-            alignItems:           "center",
-            justifyContent:       "space-between",
-            padding:              "10px 18px",
-            background:           "rgba(10,8,5,0.9)",
-            backdropFilter:       "blur(20px)",
+            flexShrink: 0, display: "flex", alignItems: "center",
+            justifyContent: "space-between", padding: "10px 18px",
+            background: "rgba(10,8,5,0.9)", backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
-            borderTop:            "1px solid rgba(255,255,255,0.05)",
+            borderTop: "1px solid rgba(255,255,255,0.05)",
           }}
         >
-          {/* ← Browse */}
           <button
             onClick={exitNowPlaying}
             style={{
-              display:    "flex",
-              alignItems: "center",
-              gap:        8,
-              color:      "#4a3820",
-              background: "transparent",
-              border:     "none",
-              cursor:     "pointer",
-              padding:    "6px 12px 6px 0",
-              transition: "color 0.2s",
+              display: "flex", alignItems: "center", gap: 8,
+              color: "#4a3820", background: "transparent",
+              border: "none", cursor: "pointer",
+              padding: "6px 12px 6px 0", transition: "color 0.2s",
             }}
           >
             <ArrowLeft size={16} />
@@ -1030,43 +1154,29 @@ export default function Home() {
           </button>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {/* ■ Stop — ends playback, clears bar, returns to browse */}
             {nowPlayingId && (
               <button
                 onClick={stopPlaying}
                 style={{
-                  display:    "flex",
-                  alignItems: "center",
-                  gap:        6,
-                  color:      "#7a5a2a",
-                  background: "transparent",
-                  border:     "1px solid rgba(201,168,76,0.18)",
-                  borderRadius: 8,
-                  cursor:     "pointer",
-                  padding:    "5px 10px",
+                  display: "flex", alignItems: "center", gap: 6,
+                  color: "#7a5a2a", background: "transparent",
+                  border: "1px solid rgba(201,168,76,0.18)",
+                  borderRadius: 8, cursor: "pointer", padding: "5px 10px",
                   transition: "color 0.2s, border-color 0.2s",
-                  fontFamily: "var(--font-mono)",
-                  fontSize:   "0.6rem",
-                  letterSpacing: "0.08em",
+                  fontFamily: "var(--font-mono)", fontSize: "0.6rem", letterSpacing: "0.08em",
                 }}
               >
                 <Square size={11} fill="currentColor" strokeWidth={0} />
                 STOP
               </button>
             )}
-
-            {/* ⟳ Sync */}
             <button
               onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
               disabled={syncing}
               aria-label="Sync with Discogs"
               style={{
-                padding:    "6px",
-                color:      "#3a2c14",
-                background: "transparent",
-                border:     "none",
-                cursor:     "pointer",
-                opacity:    syncing ? 0.4 : 1,
+                padding: "6px", color: "#3a2c14", background: "transparent",
+                border: "none", cursor: "pointer", opacity: syncing ? 0.4 : 1,
                 transition: "color 0.2s",
               }}
             >
@@ -1079,28 +1189,18 @@ export default function Home() {
 
       {/* ════════════════════════════════════════════════════════════════════
           PERSISTENT NOW PLAYING BAR
-          • Outer click  → openPlayingView (spinning disc + waveform)
-          • Title/artist → openNowPlaying  (album detail)
-          • Stop button  → stopPlaying     (clears state entirely)
-          Hidden (opacity 0, pointer-events none) in NP mode — NP view
-          already provides full context via its own bottom nav.
       ════════════════════════════════════════════════════════════════════ */}
       <div
         onClick={() => nowPlayingRec && openPlayingView(nowPlayingRec)}
         style={{
-          position:             "absolute",
-          bottom:               0,
-          left:                 0,
-          right:                0,
-          zIndex:               10,
-          background:           "rgba(10,8,5,0.95)",
-          backdropFilter:       "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          borderTop:            "1px solid rgba(201,168,76,0.1)",
-          cursor:               nowPlayingRec ? "pointer" : "default",
-          opacity:              mode === "browse" ? 1 : 0,
-          pointerEvents:        mode === "browse" ? "auto" : "none",
-          transition:           `opacity 0.32s ${EASE}`,
+          position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 10,
+          background: "rgba(10,8,5,0.95)",
+          backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
+          borderTop: "1px solid rgba(201,168,76,0.1)",
+          cursor: nowPlayingRec ? "pointer" : "default",
+          opacity: mode === "browse" ? 1 : 0,
+          pointerEvents: mode === "browse" ? "auto" : "none",
+          transition: `opacity 0.32s ${EASE}`,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px" }}>
@@ -1109,8 +1209,7 @@ export default function Home() {
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div style={{
               width: 46, height: 46, borderRadius: 10,
-              overflow: "hidden",
-              background: "rgba(255,255,255,0.03)",
+              overflow: "hidden", background: "rgba(255,255,255,0.03)",
               border: "1px solid rgba(255,255,255,0.06)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
@@ -1131,52 +1230,34 @@ export default function Home() {
                 style={{
                   position: "absolute", top: -3, right: -3,
                   width: 8, height: 8, borderRadius: "50%",
-                  background: GOLD, border: "1.5px solid #0c0a07",
-                  display: "block",
+                  background: GOLD, border: "1.5px solid #0c0a07", display: "block",
                 }}
               />
             )}
           </div>
 
-          {/* Title + artist — tap to open album detail */}
+          {/* Title + artist */}
           <div
             style={{ flex: 1, minWidth: 0, cursor: nowPlayingRec ? "pointer" : "default" }}
             onClick={e => { e.stopPropagation(); if (nowPlayingRec) openNowPlaying(nowPlayingRec); }}
           >
             {nowPlayingRec ? (
               <>
-                <p
-                  className="line-clamp-1"
-                  style={{
-                    fontFamily: "var(--font-playfair)",
-                    fontSize:   "0.875rem",
-                    fontWeight: 700,
-                    color:      "#f5f0e8",
-                    lineHeight: 1.2,
-                  }}
-                >
+                <p className="line-clamp-1" style={{
+                  fontFamily: "var(--font-playfair)", fontSize: "0.875rem",
+                  fontWeight: 700, color: "#f5f0e8", lineHeight: 1.2,
+                }}>
                   {nowPlayingRec.title}
                 </p>
-                <p
-                  className="line-clamp-1"
-                  style={{
-                    fontFamily:    "var(--font-mono)",
-                    fontSize:      "0.58rem",
-                    color:         "#5a4828",
-                    marginTop:     3,
-                    letterSpacing: "0.07em",
-                  }}
-                >
+                <p className="line-clamp-1" style={{
+                  fontFamily: "var(--font-mono)", fontSize: "0.58rem",
+                  color: "#5a4828", marginTop: 3, letterSpacing: "0.07em",
+                }}>
                   {nowPlayingRec.artist.toUpperCase()}
                 </p>
               </>
             ) : (
-              <p style={{
-                fontFamily:    "var(--font-mono)",
-                fontSize:      "0.6rem",
-                color:         "#2a1f10",
-                letterSpacing: "0.12em",
-              }}>
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#2a1f10", letterSpacing: "0.12em" }}>
                 TAP A RECORD TO BEGIN
               </p>
             )}
@@ -1185,36 +1266,23 @@ export default function Home() {
           {/* Play count */}
           {nowPlayData && (
             <div style={{ flexShrink: 0, textAlign: "right" }}>
-              <p style={{
-                fontFamily: "var(--font-mono)",
-                fontSize:   "1.3rem",
-                fontWeight: 700,
-                color:      GOLD,
-                lineHeight: 1,
-              }}>
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "1.3rem", fontWeight: 700, color: GOLD, lineHeight: 1 }}>
                 {nowPlayData.play_count}×
               </p>
             </div>
           )}
 
-          {/* Stop button — always visible when playing */}
+          {/* Stop button */}
           {nowPlayingId && (
             <button
               onClick={e => { e.stopPropagation(); stopPlaying(); }}
               style={{
-                display:       "flex",
-                alignItems:    "center",
-                gap:           6,
-                color:         "#7a5a2a",
-                background:    "transparent",
-                border:        "1px solid rgba(201,168,76,0.18)",
-                borderRadius:  8,
-                cursor:        "pointer",
-                padding:       "5px 10px",
-                fontFamily:    "var(--font-mono)",
-                fontSize:      "0.6rem",
-                letterSpacing: "0.08em",
-                flexShrink:    0,
+                display: "flex", alignItems: "center", gap: 6,
+                color: "#7a5a2a", background: "transparent",
+                border: "1px solid rgba(201,168,76,0.18)",
+                borderRadius: 8, cursor: "pointer", padding: "5px 10px",
+                fontFamily: "var(--font-mono)", fontSize: "0.6rem",
+                letterSpacing: "0.08em", flexShrink: 0,
               }}
             >
               <Square size={11} fill="currentColor" strokeWidth={0} />

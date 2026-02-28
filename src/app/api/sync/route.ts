@@ -33,35 +33,47 @@ export async function GET() {
     page++;
   } while (page <= totalPages);
 
-  const releases: Array<{ discogs_id: string; title: string; artist: string; cover_url: string }> =
-    allItems.map((item) => {
-      const info = item.basic_information as Record<string, unknown>;
-      const artists = info.artists as Array<{ name: string }>;
-      return {
-        discogs_id: String(item.id),
-        title: String(info.title),
-        artist: artists[0]?.name ?? 'Unknown',
-        cover_url: String(info.cover_image),
-      };
-    });
+  const releases = allItems.map((item) => {
+    const info    = item.basic_information as Record<string, unknown>;
+    const artists = info.artists as Array<{ name: string }>;
+    const labels  = (info.labels  as Array<{ name: string }>) ?? [];
+    const formats = (info.formats as Array<{ name: string }>) ?? [];
+
+    return {
+      discogs_id: String(item.id),
+      title:      String(info.title),
+      artist:     artists[0]?.name ?? 'Unknown',
+      cover_url:  String(info.cover_image ?? ''),
+      genres:     JSON.stringify((info.genres  as string[]) ?? []),
+      styles:     JSON.stringify((info.styles  as string[]) ?? []),
+      year:       (info.year as number) || null,
+      label:      labels[0]?.name  ?? null,
+      format:     formats[0]?.name ?? null,
+    };
+  });
 
   // Upsert all records in a single batch (one network round-trip vs. N sequential calls)
   await db.batch(
     releases.map(r => ({
-      sql: `INSERT INTO records (discogs_id, title, artist, cover_url)
-            VALUES (?, ?, ?, ?)
+      sql: `INSERT INTO records (discogs_id, title, artist, cover_url, genres, styles, year, label, format)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(discogs_id) DO UPDATE SET
               title     = excluded.title,
               artist    = excluded.artist,
-              cover_url = excluded.cover_url`,
-      args: [r.discogs_id, r.title, r.artist, r.cover_url],
+              cover_url = excluded.cover_url,
+              genres    = excluded.genres,
+              styles    = excluded.styles,
+              year      = excluded.year,
+              label     = excluded.label,
+              format    = excluded.format`,
+      args: [r.discogs_id, r.title, r.artist, r.cover_url, r.genres, r.styles, r.year, r.label, r.format],
     })),
     'write',
   );
 
   // Return from DB so response matches the /api/records shape
   const result = await db.execute(
-    'SELECT discogs_id, title, artist, cover_url, added_at FROM records ORDER BY added_at DESC'
+    'SELECT discogs_id, title, artist, cover_url, added_at, genres, styles, year, label, format FROM records ORDER BY added_at DESC'
   );
   return NextResponse.json(toRows(result));
 }
