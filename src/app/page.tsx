@@ -26,6 +26,15 @@ interface PlayData {
   last_played: string | null;
 }
 
+interface AlbumDetails {
+  year:      number | null;
+  label:     string | null;
+  genres:    string[];
+  styles:    string[];
+  tracklist: Array<{ position: string; title: string; duration: string }>;
+  runtime:   string;
+}
+
 type SortKey = "date_added" | "artist" | "title" | "most_played" | "recently_played";
 type AppMode = "browse" | "now-playing";
 
@@ -62,6 +71,11 @@ export default function Home() {
   // ── Inline play-count editor
   const [editingId,  setEditingId]  = useState<string | null>(null);
   const [editValue,  setEditValue]  = useState("");
+
+  // ── Album details + playing state
+  const [albumDetails, setAlbumDetails] = useState<AlbumDetails | null>(null);
+  const [albumLoading, setAlbumLoading] = useState(false);
+  const [isPlaying,    setIsPlaying]    = useState(false);
 
   // ── Carousel drag
   const [dragOffset, setDragOffset] = useState(0);
@@ -196,6 +210,21 @@ export default function Home() {
 
   useEffect(() => { setActiveIndex(0); }, [filter, sort]);
 
+  // ── Fetch album details when entering Now Playing ──────────────────────────
+
+  useEffect(() => {
+    if (mode !== "now-playing" || !viewingRecord) return;
+    let cancelled = false;
+    setAlbumLoading(true);
+    setAlbumDetails(null);
+    fetch(`/api/album/${viewingRecord.discogs_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled && data) setAlbumDetails(data as AlbumDetails); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setAlbumLoading(false); });
+    return () => { cancelled = true; };
+  }, [mode, viewingRecord]);
+
   // ── Play logging ───────────────────────────────────────────────────────────
 
   const markPlaying = useCallback(async (discogs_id: string) => {
@@ -208,6 +237,7 @@ export default function Home() {
     if (!res.ok) return;
     const { play_count, last_played } = await res.json();
     setPlays(prev => ({ ...prev, [discogs_id]: { discogs_id, play_count, last_played } }));
+    setIsPlaying(true);
   }, []);
 
   // ── Mode navigation ────────────────────────────────────────────────────────
@@ -217,11 +247,14 @@ export default function Home() {
     if (!record) return;
     setEditingId(null);
     setViewingRecord(record);
+    setIsPlaying(false);
+    setAlbumDetails(null);
     setMode("now-playing");
   }, [displayed, activeIndex]);
 
   const exitNowPlaying = useCallback(() => {
     setEditingId(null);
+    setIsPlaying(false);
     setMode("browse");
   }, []);
 
@@ -418,11 +451,6 @@ export default function Home() {
               <p className="text-sm">No records found</p>
             </div>
           ) : (
-            /*
-             * Inner div: fixed height based on cardWidth, centered by parent
-             * flex items-center, then shifted up by centerOffset so its
-             * visual center lands at the true viewport midpoint.
-             */
             <div
               style={{
                 position:   "relative",
@@ -639,89 +667,245 @@ export default function Home() {
           transition:    `opacity 0.32s ${EASE}, transform 0.32s ${EASE}`,
         }}
       >
-        {/* ── Main content: centered vertically ── */}
-        <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-6 px-8 pt-safe">
+        {/* ── Main content: two sub-panels with CSS opacity transitions ── */}
+        <div className="flex-1 min-h-0 relative">
 
-          {/* Album art — large, prominent, high-quality */}
+          {/* ── Detail sub-panel (shown when !isPlaying) ── */}
           <div
-            className="rounded-2xl overflow-hidden bg-zinc-900 shrink-0"
+            className="absolute inset-0 overflow-y-auto scrollbar-hide"
             style={{
-              width:     "min(80vw, 380px)",
-              height:    "min(80vw, 380px)",
-              boxShadow: "0 32px 80px -8px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.04)",
+              opacity:       isPlaying ? 0 : 1,
+              pointerEvents: (mode !== "now-playing" || isPlaying) ? "none" : "auto",
+              transition:    `opacity 0.32s ${EASE}`,
             }}
           >
-            {viewingRecord && (
-              <img
-                src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
-                alt={viewingRecord?.title}
-                className="w-full h-full object-cover"
-                draggable={false}
-              />
-            )}
-          </div>
+            <div className="flex flex-col items-center gap-5 px-8 pt-safe py-6">
 
-          {/* Title + artist */}
-          <div className="text-center w-full max-w-sm">
-            <p className="text-2xl font-black tracking-tight leading-tight line-clamp-2">
-              {viewingRecord?.title ?? ""}
-            </p>
-            <p className="text-zinc-500 text-lg mt-1.5 line-clamp-1">
-              {viewingRecord?.artist ?? ""}
-            </p>
-          </div>
-
-          {/* Play count with inline editor */}
-          <div>
-            {npIsEditing ? (
-              <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2.5">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  max="9999"
-                  value={editValue}
-                  onChange={e => setEditValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter")  saveEdit();
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  className="w-16 bg-transparent text-white text-lg text-center outline-none tabular-nums font-bold"
-                  autoFocus
-                />
-                <span className="text-zinc-600 text-sm">plays</span>
-                <button onClick={saveEdit}              className="text-amber-500 font-bold text-lg ml-1">✓</button>
-                <button onClick={() => setEditingId(null)} className="text-zinc-600 text-lg">✕</button>
-              </div>
-            ) : (
-              <button
-                onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
-                className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-5 py-2 transition-colors hover:border-zinc-700 active:scale-95 transition-transform"
+              {/* Album art */}
+              <div
+                className="rounded-2xl overflow-hidden bg-zinc-900 shrink-0"
+                style={{
+                  width:     "min(80vw, 380px)",
+                  height:    "min(80vw, 380px)",
+                  boxShadow: "0 32px 80px -8px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.04)",
+                }}
               >
-                <span className="text-white font-black text-lg tabular-nums">
-                  {npPlayData?.play_count ?? 0}
-                </span>
-                <span className="text-zinc-500 text-sm">
-                  {(npPlayData?.play_count ?? 0) === 1 ? "play" : "plays"}
-                </span>
-                <span className="text-zinc-700 text-xs ml-0.5">edit</span>
+                {viewingRecord && (
+                  <img
+                    src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
+                    alt={viewingRecord.title}
+                    className="w-full h-full object-cover"
+                    draggable={false}
+                  />
+                )}
+              </div>
+
+              {/* Title + artist */}
+              <div className="text-center w-full max-w-sm">
+                <p className="text-2xl font-black tracking-tight leading-tight line-clamp-2">
+                  {viewingRecord?.title ?? ""}
+                </p>
+                <p className="text-zinc-500 text-lg mt-1.5 line-clamp-1">
+                  {viewingRecord?.artist ?? ""}
+                </p>
+              </div>
+
+              {/* Metadata section */}
+              {albumLoading ? (
+                <div className="w-full max-w-sm space-y-2.5">
+                  <div className="h-3.5 bg-zinc-900 rounded-full w-2/3 mx-auto animate-pulse" />
+                  <div className="flex gap-2 justify-center">
+                    <div className="h-6 bg-zinc-900 rounded-full w-14 animate-pulse" />
+                    <div className="h-6 bg-zinc-900 rounded-full w-20 animate-pulse" />
+                    <div className="h-6 bg-zinc-900 rounded-full w-16 animate-pulse" />
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    {[90, 80, 85, 75, 88, 70].map((w, i) => (
+                      <div key={i} className="flex items-center gap-3 px-4">
+                        <div className="h-2.5 bg-zinc-900 rounded-full w-6 animate-pulse shrink-0" />
+                        <div className="h-2.5 bg-zinc-900 rounded-full animate-pulse flex-1" style={{ maxWidth: `${w}%` }} />
+                        <div className="h-2.5 bg-zinc-900 rounded-full w-8 animate-pulse shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : albumDetails ? (
+                <div className="w-full max-w-sm space-y-4">
+
+                  {/* Year · Label */}
+                  {(albumDetails.year || albumDetails.label) && (
+                    <p className="text-center text-[11px] text-zinc-500 tracking-wide uppercase">
+                      {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
+                    </p>
+                  )}
+
+                  {/* Genre + style pills */}
+                  {(albumDetails.genres.length > 0 || albumDetails.styles.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5 justify-center">
+                      {albumDetails.genres.map(g => (
+                        <span key={g} className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] text-zinc-400 tracking-wide">
+                          {g}
+                        </span>
+                      ))}
+                      {albumDetails.styles.map(s => (
+                        <span key={s} className="px-2.5 py-1 bg-zinc-950 border border-zinc-800/50 rounded-full text-[10px] text-zinc-600 tracking-wide">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Tracklist */}
+                  {albumDetails.tracklist.length > 0 && (
+                    <div className="rounded-xl overflow-hidden border border-zinc-900">
+                      {albumDetails.tracklist.map((track, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-baseline gap-3 px-4 py-2.5 ${
+                            i < albumDetails.tracklist.length - 1 ? "border-b border-zinc-900/80" : ""
+                          }`}
+                        >
+                          <span className="text-[10px] text-zinc-700 w-5 shrink-0 tabular-nums text-right">
+                            {track.position}
+                          </span>
+                          <span className="flex-1 text-xs text-zinc-300 leading-snug">
+                            {track.title}
+                          </span>
+                          {track.duration && (
+                            <span className="text-[10px] text-zinc-700 tabular-nums shrink-0">
+                              {track.duration}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {albumDetails.runtime && (
+                        <div className="flex justify-end px-4 py-2.5 border-t border-zinc-900">
+                          <span className="text-[10px] text-zinc-600 tracking-wide">
+                            {albumDetails.runtime} total
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              ) : null}
+
+              {/* Play count with inline editor */}
+              <div>
+                {npIsEditing ? (
+                  <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-2.5">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      max="9999"
+                      value={editValue}
+                      onChange={e => setEditValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter")  saveEdit();
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      className="w-16 bg-transparent text-white text-lg text-center outline-none tabular-nums font-bold"
+                      autoFocus
+                    />
+                    <span className="text-zinc-600 text-sm">plays</span>
+                    <button onClick={saveEdit}              className="text-amber-500 font-bold text-lg ml-1">✓</button>
+                    <button onClick={() => setEditingId(null)} className="text-zinc-600 text-lg">✕</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
+                    className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-5 py-2 transition-colors hover:border-zinc-700 active:scale-95 transition-transform"
+                  >
+                    <span className="text-white font-black text-lg tabular-nums">
+                      {npPlayData?.play_count ?? 0}
+                    </span>
+                    <span className="text-zinc-500 text-sm">
+                      {(npPlayData?.play_count ?? 0) === 1 ? "play" : "plays"}
+                    </span>
+                    <span className="text-zinc-700 text-xs ml-0.5">edit</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Mark as Playing button */}
+              <button
+                onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
+                className="flex items-center gap-2.5 rounded-full px-9 py-4 text-sm font-black tracking-[0.08em] uppercase active:scale-95 transition-transform"
+                style={{
+                  background:  "#f59e0b",
+                  color:       "#000",
+                  boxShadow:   "0 8px 32px -4px rgba(245,158,11,0.5)",
+                }}
+              >
+                <Play size={15} fill="#000" strokeWidth={0} />
+                <span>Mark as Playing</span>
               </button>
-            )}
+
+              {/* Bottom spacer */}
+              <div className="h-4" />
+            </div>
           </div>
 
-          {/* Mark as Playing button */}
-          <button
-            onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
-            className="flex items-center gap-2.5 rounded-full px-9 py-4 text-sm font-black tracking-[0.08em] uppercase active:scale-95 transition-transform"
+          {/* ── Playing sub-panel (shown when isPlaying) ── */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8"
             style={{
-              background:  "#f59e0b",
-              color:       "#000",
-              boxShadow:   "0 8px 32px -4px rgba(245,158,11,0.5)",
+              opacity:       isPlaying ? 1 : 0,
+              pointerEvents: (mode === "now-playing" && isPlaying) ? "auto" : "none",
+              transition:    `opacity 0.4s ${EASE}`,
+              paddingTop:    "max(env(safe-area-inset-top), 12px)",
             }}
           >
-            <Play size={15} fill="#000" strokeWidth={0} />
-            <span>Mark as Playing</span>
-          </button>
+            {/* Large album art */}
+            <div
+              className="rounded-2xl overflow-hidden bg-zinc-900 shrink-0"
+              style={{
+                width:     "min(90vw, 500px)",
+                height:    "min(90vw, 500px)",
+                boxShadow: "0 40px 96px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.05)",
+              }}
+            >
+              {viewingRecord && (
+                <img
+                  src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
+                  alt={viewingRecord.title}
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                />
+              )}
+            </div>
+
+            {/* NOW PLAYING indicator */}
+            <div className="flex items-center gap-2.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 now-playing-dot shrink-0" />
+              <span className="text-[11px] font-black tracking-[0.25em] text-amber-500 uppercase">
+                Now Playing
+              </span>
+            </div>
+
+            {/* Title + artist */}
+            <div className="text-center">
+              <p className="text-xl font-black tracking-tight leading-tight line-clamp-2">
+                {viewingRecord?.title ?? ""}
+              </p>
+              <p className="text-zinc-500 text-base mt-1 line-clamp-1">
+                {viewingRecord?.artist ?? ""}
+              </p>
+            </div>
+
+            {/* Play count badge */}
+            <div className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-5 py-2">
+              <span className="text-white font-black text-lg tabular-nums">
+                {npPlayData?.play_count ?? 0}
+              </span>
+              <span className="text-zinc-500 text-sm">
+                {(npPlayData?.play_count ?? 0) === 1 ? "play" : "plays"}
+              </span>
+            </div>
+          </div>
+
         </div>
 
         {/* ── Bottom navigation bar ── */}

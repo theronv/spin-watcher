@@ -57,10 +57,10 @@ body {
 }
 
 /* Now-playing pulse */
-@keyframes now-playing-pulse {
+@keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  50%       { opacity: 0.2; }
 }
 .now-playing-dot {
-  animation: now-playing-pulse 1.2s ease-in-out infinite;
+  animation: pulse-dot 1.4s ease-in-out infinite;
 }
