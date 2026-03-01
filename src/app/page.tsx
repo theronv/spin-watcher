@@ -312,7 +312,7 @@ export default function Home() {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [loading]); // re-run when loading→false so the grid div is in the DOM
 
   // ── Data loading ───────────────────────────────────────────────────────────
 
@@ -598,7 +598,7 @@ export default function Home() {
             fontSize: "1.3rem", letterSpacing: "0.28em",
             color: "#f5f0e8", textTransform: "uppercase",
           }}>
-            SpinWatcher
+            NeedleDrop
           </h1>
         </div>
 
@@ -644,7 +644,7 @@ export default function Home() {
               fontFamily: "var(--font-playfair)", fontWeight: 900, fontSize: "0.9rem",
               letterSpacing: "0.28em", color: "#f5f0e8", textTransform: "uppercase",
             }}>
-              SpinWatcher
+              NeedleDrop
             </h1>
             <div style={{ width: 42, height: 22, background: "rgba(255,255,255,0.04)", borderRadius: 999 }} />
           </div>
@@ -704,7 +704,7 @@ export default function Home() {
               letterSpacing: "0.28em", color: "#f5f0e8",
               textTransform: "uppercase", lineHeight: 1,
             }}>
-              SpinWatcher
+              NeedleDrop
             </h1>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

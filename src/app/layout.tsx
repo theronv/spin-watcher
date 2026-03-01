@@ -17,7 +17,7 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata = {
-  title: "SpinWatcher",
+  title: "NeedleDrop",
   description: "Vinyl Collection Interface",
 };
 
