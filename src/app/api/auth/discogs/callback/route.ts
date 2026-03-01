@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     headers: {
       ...authHeader,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'SpinWatcher/2.0',
+      'User-Agent': 'NeedleDrop/2.0',
     },
     body: `oauth_verifier=${encodeURIComponent(oauthVerifier)}`,
   });
@@ -78,7 +78,7 @@ export async function GET(request: Request) {
   const identityHeader = oauth.toHeader(oauth.authorize(identityReq, accessTok));
 
   const identityRes = await fetch(identityReq.url, {
-    headers: { ...identityHeader, 'User-Agent': 'SpinWatcher/2.0' },
+    headers: { ...identityHeader, 'User-Agent': 'NeedleDrop/2.0' },
   });
 
   let username   = '';

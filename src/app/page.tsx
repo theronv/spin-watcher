@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { FixedSizeList } from "react-window";
 import { RefreshCw, Search, X, Disc3, ArrowLeft, Play, Square } from "lucide-react";
+import { GridErrorBoundary } from "@/components/GridErrorBoundary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -860,6 +861,7 @@ export default function Home() {
           className="scrollbar-hide"
           style={{ flex: 1, overflow: "hidden" }}
         >
+          <GridErrorBoundary>
           {displayed.length === 0 ? (
             /* Empty state */
             <div style={{
@@ -927,6 +929,7 @@ export default function Home() {
               )}
             </FixedSizeList>
           ) : null}
+          </GridErrorBoundary>
         </div>
 
       </div>

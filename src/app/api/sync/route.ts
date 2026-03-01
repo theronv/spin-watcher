@@ -31,7 +31,7 @@ async function buildHeaders(url: string): Promise<Record<string, string>> {
         const oauth      = makeOAuth();
         const token      = { key: session.access_token, secret: session.access_token_secret };
         const authHeader = oauth.toHeader(oauth.authorize({ url, method: 'GET' }, token));
-        return { ...authHeader, 'User-Agent': 'SpinWatcher/2.0' };
+        return { ...authHeader, 'User-Agent': 'NeedleDrop/2.0' };
       }
     } catch { /* fall through */ }
   }
@@ -40,12 +40,12 @@ async function buildHeaders(url: string): Promise<Record<string, string>> {
   const token = process.env.DISCOGS_TOKEN;
   if (token) {
     return {
-      'User-Agent':    'SpinWatcher/2.0',
+      'User-Agent':    'NeedleDrop/2.0',
       Authorization:   `Discogs token=${token}`,
     };
   }
 
-  return { 'User-Agent': 'SpinWatcher/2.0' };
+  return { 'User-Agent': 'NeedleDrop/2.0' };
 }
 
 /** Resolve username — prefer session, fall back to DISCOGS_USER env var */

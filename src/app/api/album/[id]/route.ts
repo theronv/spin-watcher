@@ -28,7 +28,7 @@ export async function GET(
 
   const response = await fetch(`https://api.discogs.com/releases/${id}`, {
     headers: {
-      'User-Agent': 'SpinWatcher/2.0',
+      'User-Agent': 'NeedleDrop/2.0',
       Authorization: `Discogs token=${token}`,
     },
     next: { revalidate: 604800 }, // 7 days

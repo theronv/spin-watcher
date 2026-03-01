@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     headers: {
       ...authHeader,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'SpinWatcher/2.0',
+      'User-Agent': 'NeedleDrop/2.0',
     },
     body: `oauth_callback=${encodeURIComponent(callbackUrl)}`,
   });
