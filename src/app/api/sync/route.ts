@@ -39,8 +39,8 @@ function buildHeaders(
   return { 'User-Agent': 'NeedleDrop/2.0' };
 }
 
-export async function GET() {
-  const session = await getSession();
+export async function GET(request: Request) {
+  const session = await getSession(request);
 
   // Resolve username: OAuth session first, env var fallback for demo/single-user mode
   const envUser  = (process.env.DISCOGS_USER ?? '').replace(/[\u201C\u201D"]/g, '').trim();

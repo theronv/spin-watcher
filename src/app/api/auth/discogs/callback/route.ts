@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import OAuth from 'oauth-1.0a';
 import { createHmac } from 'crypto';
 import { cookies } from 'next/headers';
+import { createMobileToken } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,16 +91,25 @@ export async function GET(request: Request) {
     avatar_url = identity.avatar_url ?? '';
   }
 
-  // Build session payload
-  const session = JSON.stringify({ username, avatar_url, access_token: accessToken, access_token_secret: accessTokenSecret });
+  const sessionData = { username, avatar_url, access_token: accessToken, access_token_secret: accessTokenSecret };
 
+  // Check whether this was initiated by the mobile app
+  const mobileRedirect = cookieStore.get('discogs_redirect_uri')?.value ?? '';
+
+  if (mobileRedirect.startsWith('needledrop://')) {
+    // Mobile flow: embed a signed token in the deep-link redirect
+    const token = createMobileToken(sessionData);
+    const redirect = NextResponse.redirect(`${mobileRedirect}?token=${encodeURIComponent(token)}`);
+    redirect.cookies.delete('discogs_request_secret');
+    redirect.cookies.delete('discogs_redirect_uri');
+    return redirect;
+  }
+
+  // Web flow: set an httpOnly session cookie (30 days)
   const redirect = NextResponse.redirect(`${origin}/`);
-
-  // Clear the temporary request secret cookie
   redirect.cookies.delete('discogs_request_secret');
-
-  // Store session in an httpOnly cookie (30 days)
-  redirect.cookies.set('discogs_session', session, {
+  redirect.cookies.delete('discogs_redirect_uri');
+  redirect.cookies.set('discogs_session', JSON.stringify(sessionData), {
     httpOnly: true,
     secure:   process.env.NODE_ENV === 'production',
     sameSite: 'lax',

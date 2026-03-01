@@ -4,8 +4,8 @@ import { getSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const session = await getSession();
+export async function GET(request: Request) {
+  const session = await getSession(request);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const result = await db.execute({
@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getSession();
+  const session = await getSession(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { discogs_id } = await req.json();
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
  * Overwrites the play count for the authenticated user's record.
  */
 export async function PATCH(req: NextRequest) {
-  const session = await getSession();
+  const session = await getSession(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { discogs_id, count } = await req.json();

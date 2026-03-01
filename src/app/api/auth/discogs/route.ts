@@ -28,7 +28,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const { origin } = new URL(request.url);
+  const { origin, searchParams } = new URL(request.url);
+  const redirectUri = searchParams.get('redirect_uri') ?? '';
   const callbackUrl = `${origin}/api/auth/discogs/callback`;
 
   const oauth = makeOAuth();
@@ -79,6 +80,17 @@ export async function GET(request: Request) {
     maxAge:   600, // 10 minutes
     path:     '/',
   });
+
+  // Store the mobile redirect URI so the callback knows where to send the token
+  if (redirectUri) {
+    redirect.cookies.set('discogs_redirect_uri', redirectUri, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge:   600,
+      path:     '/',
+    });
+  }
 
   return redirect;
 }
