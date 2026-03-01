@@ -1,32 +1,88 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import OAuth from 'oauth-1.0a';
+import { createHmac } from 'crypto';
 import { db, toRows } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const token = process.env.DISCOGS_TOKEN;
-  const username = (process.env.DISCOGS_USER || '').replace(/[\u201C\u201D"]/g, '').trim();
+function makeOAuth() {
+  return new OAuth({
+    consumer: {
+      key:    process.env.DISCOGS_CONSUMER_KEY!,
+      secret: process.env.DISCOGS_CONSUMER_SECRET!,
+    },
+    signature_method: 'HMAC-SHA1',
+    hash_function(base_string, key) {
+      return createHmac('sha1', key).update(base_string).digest('base64');
+    },
+  });
+}
 
-  if (!token) {
-    return NextResponse.json({ error: 'DISCOGS_TOKEN not set' }, { status: 400 });
+/** Build fetch headers — OAuth session token takes priority over personal access token */
+async function buildHeaders(url: string): Promise<Record<string, string>> {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get('discogs_session')?.value;
+
+  if (raw) {
+    try {
+      const session = JSON.parse(raw) as { access_token: string; access_token_secret: string };
+      if (session.access_token && session.access_token_secret) {
+        const oauth      = makeOAuth();
+        const token      = { key: session.access_token, secret: session.access_token_secret };
+        const authHeader = oauth.toHeader(oauth.authorize({ url, method: 'GET' }, token));
+        return { ...authHeader, 'User-Agent': 'SpinWatcher/2.0' };
+      }
+    } catch { /* fall through */ }
   }
 
-  const headers = {
-    'User-Agent': 'SpinWatcher/2.0',
-    Authorization: `Discogs token=${token}`,
-  };
+  // Fall back to personal access token (demo / env-var mode)
+  const token = process.env.DISCOGS_TOKEN;
+  if (token) {
+    return {
+      'User-Agent':    'SpinWatcher/2.0',
+      Authorization:   `Discogs token=${token}`,
+    };
+  }
 
-  // Fetch all pages (Discogs max per_page=100)
+  return { 'User-Agent': 'SpinWatcher/2.0' };
+}
+
+/** Resolve username — prefer session, fall back to DISCOGS_USER env var */
+async function resolveUsername(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get('discogs_session')?.value;
+
+  if (raw) {
+    try {
+      const session = JSON.parse(raw) as { username: string };
+      if (session.username) return session.username;
+    } catch { /* fall through */ }
+  }
+
+  const envUser = (process.env.DISCOGS_USER ?? '').replace(/[\u201C\u201D"]/g, '').trim();
+  return envUser || null;
+}
+
+export async function GET() {
+  const username = await resolveUsername();
+  if (!username) {
+    return NextResponse.json({ error: 'Not authenticated and DISCOGS_USER not set' }, { status: 401 });
+  }
+
   const allItems: Record<string, unknown>[] = [];
-  let page = 1;
+  let page       = 1;
   let totalPages = 1;
 
   do {
     const url = `https://api.discogs.com/users/${username}/collection/folders/0/releases?per_page=100&page=${page}&sort=added&sort_order=desc`;
+    const headers = await buildHeaders(url);
+
     const response = await fetch(url, { headers });
     if (!response.ok) {
       return NextResponse.json({ error: 'Discogs API error' }, { status: response.status });
     }
+
     const data = await response.json();
     allItems.push(...(data.releases as Record<string, unknown>[]));
     totalPages = (data.pagination as { pages: number }).pages;
@@ -52,7 +108,6 @@ export async function GET() {
     };
   });
 
-  // Upsert all records in a single batch (one network round-trip vs. N sequential calls)
   await db.batch(
     releases.map(r => ({
       sql: `INSERT INTO records (discogs_id, title, artist, cover_url, genres, styles, year, label, format)
@@ -71,7 +126,6 @@ export async function GET() {
     'write',
   );
 
-  // Return from DB so response matches the /api/records shape
   const result = await db.execute(
     'SELECT discogs_id, title, artist, cover_url, added_at, genres, styles, year, label, format FROM records ORDER BY added_at DESC'
   );

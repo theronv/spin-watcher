@@ -45,6 +45,11 @@ type SortKey =
   | "year_asc"   | "year_desc" | "genre_az" | "format_az";
 type AppMode = "browse" | "now-playing";
 
+interface Session {
+  username:   string;
+  avatar_url: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -268,6 +273,10 @@ const AlbumCard = React.memo(function AlbumCard({
 
 export default function Home() {
 
+  // ── Auth state ─────────────────────────────────────────────────────────────
+  const [session,       setSession]      = useState<Session | null>(null);
+  const [authChecked,   setAuthChecked]  = useState(false);
+
   // ── App state ──────────────────────────────────────────────────────────────
   const [mode,          setMode]         = useState<AppMode>("browse");
   const [records,       setRecords]      = useState<RecordData[]>([]);
@@ -316,13 +325,16 @@ export default function Home() {
     setPlays(map);
   }, []);
 
-  const syncFromDiscogs = useCallback(async () => {
+  const syncFromDiscogs = useCallback(async (username?: string) => {
     setSyncing(true);
     try {
       const res = await fetch("/api/sync");
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data)) setRecords(parseRecords(data));
+      if (Array.isArray(data)) {
+        setRecords(parseRecords(data));
+        if (username) localStorage.setItem(`last_sync_at_${username}`, String(Date.now()));
+      }
     } finally {
       setSyncing(false);
     }
@@ -330,6 +342,25 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
+      // 1. Check auth session
+      const sessionRes = await fetch("/api/auth/session").catch(() => null);
+      let sess: Session | null = null;
+      if (sessionRes?.ok) {
+        const data = await sessionRes.json() as { is_logged_in: boolean; username?: string; avatar_url?: string };
+        if (data.is_logged_in && data.username) {
+          sess = { username: data.username, avatar_url: data.avatar_url ?? "" };
+          setSession(sess);
+        }
+      }
+      setAuthChecked(true);
+
+      // 2. If not logged in, stop here — show login screen
+      if (!sess) {
+        setLoading(false);
+        return;
+      }
+
+      // 3. Boot collection
       setLoading(true);
       try {
         await fetch("/api/init");
@@ -337,8 +368,17 @@ export default function Home() {
         const data = res.ok ? await res.json() : [];
         if (Array.isArray(data) && data.length > 0) {
           setRecords(parseRecords(data));
+          // Auto-sync if last sync was more than 24 h ago
+          const lastSyncKey = `last_sync_at_${sess.username}`;
+          const lastSync    = localStorage.getItem(lastSyncKey);
+          const stale       = !lastSync || Date.now() - Number(lastSync) > 24 * 60 * 60 * 1000;
+          if (stale) {
+            await syncFromDiscogs();
+            localStorage.setItem(lastSyncKey, String(Date.now()));
+          }
         } else {
           await syncFromDiscogs();
+          localStorage.setItem(`last_sync_at_${sess.username}`, String(Date.now()));
         }
         await fetchPlays();
       } catch (err) {
@@ -533,6 +573,65 @@ export default function Home() {
   const npIsEditing    = editingId === viewingRecord?.discogs_id;
   const isFiltering    = filter.length > 0 || selectedGenres.size > 0;
 
+  // ── Pre-auth blank (avoid flash before session check completes) ────────────
+
+  if (!authChecked) {
+    return <div style={{ background: "#0c0a07", minHeight: "100dvh" }} />;
+  }
+
+  // ── Login screen ───────────────────────────────────────────────────────────
+
+  if (!session) {
+    return (
+      <div style={{
+        background: "#0c0a07", minHeight: "100dvh",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "0 24px",
+        fontFamily: "var(--font-mono)",
+      }}>
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <Disc3 size={28} strokeWidth={1.2} style={{ color: GOLD }} />
+          <h1 style={{
+            fontFamily: "var(--font-playfair)", fontWeight: 900,
+            fontSize: "1.3rem", letterSpacing: "0.28em",
+            color: "#f5f0e8", textTransform: "uppercase",
+          }}>
+            SpinWatcher
+          </h1>
+        </div>
+
+        {/* Tagline */}
+        <p style={{
+          fontSize: "0.65rem", color: "#3a2c14",
+          letterSpacing: "0.12em", marginBottom: 40,
+          textAlign: "center",
+        }}>
+          YOUR VINYL COLLECTION, BEAUTIFULLY TRACKED
+        </p>
+
+        {/* Connect button */}
+        <a
+          href="/api/auth/discogs"
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            background: GOLD, color: "#0c0a07",
+            borderRadius: 999, padding: "14px 32px",
+            fontFamily: "var(--font-mono)", fontSize: "0.72rem",
+            fontWeight: 700, letterSpacing: "0.12em",
+            textDecoration: "none", textTransform: "uppercase",
+            boxShadow: "0 8px 32px -4px rgba(201,168,76,0.45)",
+            transition: "opacity 0.2s",
+          }}
+        >
+          <Disc3 size={14} strokeWidth={2} />
+          Connect with Discogs
+        </a>
+      </div>
+    );
+  }
+
   // ── Loading skeleton ───────────────────────────────────────────────────────
 
   if (loading) {
@@ -626,9 +725,9 @@ export default function Home() {
 
               {/* Sync */}
               <button
-                onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
+                onClick={async () => { await syncFromDiscogs(session?.username); await fetchPlays(); }}
                 disabled={syncing}
-                aria-label="Sync with Discogs"
+                aria-label="Sync collection"
                 style={{
                   padding: "6px", color: "#3a2c14", background: "transparent",
                   border: "none", cursor: "pointer", transition: "color 0.2s",
@@ -637,6 +736,41 @@ export default function Home() {
               >
                 <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
               </button>
+
+              {/* User avatar + disconnect */}
+              {session && (
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  {session.avatar_url ? (
+                    <img
+                      src={session.avatar_url}
+                      alt={session.username}
+                      width={22} height={22}
+                      style={{ borderRadius: "50%", border: "1px solid rgba(201,168,76,0.3)", flexShrink: 0 }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: 22, height: 22, borderRadius: "50%",
+                      background: "rgba(201,168,76,0.12)",
+                      border: "1px solid rgba(201,168,76,0.3)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: GOLD }}>
+                        {session.username[0]?.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  <a
+                    href="/api/auth/logout"
+                    style={{
+                      fontFamily: "var(--font-mono)", fontSize: "0.52rem",
+                      color: "#3a2c14", letterSpacing: "0.08em",
+                      textDecoration: "none", lineHeight: 1,
+                    }}
+                  >
+                    OUT
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1171,9 +1305,9 @@ export default function Home() {
               </button>
             )}
             <button
-              onClick={async () => { await syncFromDiscogs(); await fetchPlays(); }}
+              onClick={async () => { await syncFromDiscogs(session?.username); await fetchPlays(); }}
               disabled={syncing}
-              aria-label="Sync with Discogs"
+              aria-label="Sync collection"
               style={{
                 padding: "6px", color: "#3a2c14", background: "transparent",
                 border: "none", cursor: "pointer", opacity: syncing ? 0.4 : 1,
