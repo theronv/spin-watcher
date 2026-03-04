@@ -490,6 +490,8 @@ export default function Home() {
 
   const markPlaying = useCallback(async (discogs_id: string) => {
     setNowPlayingId(discogs_id);
+    setMode("now-playing");
+    setIsPlaying(true);
     const res = await apiFetch("/api/plays", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -498,7 +500,6 @@ export default function Home() {
     if (!res.ok) return;
     const { play_count, last_played } = await res.json();
     setPlays(prev => ({ ...prev, [discogs_id]: { discogs_id, play_count, last_played } }));
-    setIsPlaying(true);
   }, []);
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -991,14 +992,13 @@ export default function Home() {
               className="scrollbar-hide md:w-[44%] md:overflow-y-auto border-b border-white/5 md:border-b-0 md:border-r"
               style={{
                 flexShrink: 0,
-                display: "flex", flexDirection: "column",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 gap: 14,
                 padding: "max(env(safe-area-inset-top), 16px) 22px 22px",
               }}
             >
               {/* Album art */}
               <div
-                className="self-center"
                 style={{
                   width:  "clamp(140px, 38vw, 210px)",
                   height: "clamp(140px, 38vw, 210px)",
@@ -1022,7 +1022,7 @@ export default function Home() {
               </div>
 
               {/* Title + artist */}
-              <div className="text-center md:text-left">
+              <div style={{ textAlign: "center" }}>
                 <p
                   className="line-clamp-2"
                   style={{
@@ -1042,7 +1042,7 @@ export default function Home() {
               </div>
 
               {/* Play count + inline editor */}
-              <div className="flex justify-center md:justify-start">
+              <div className="flex justify-center">
                 {npIsEditing ? (
                   <div style={{
                     display: "flex", alignItems: "center", gap: 10,
@@ -1101,12 +1101,13 @@ export default function Home() {
                     <p style={{
                       fontFamily: "var(--font-mono)", fontSize: "0.58rem",
                       color: "#5a4828", letterSpacing: "0.12em", textTransform: "uppercase",
+                      textAlign: "center",
                     }}>
                       {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
                     </p>
                   )}
                   {(albumDetails.genres.length > 0 || albumDetails.styles.length > 0) && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
                       {albumDetails.genres.map(g => (
                         <span key={g} style={{
                           padding: "4px 10px",
@@ -1134,7 +1135,6 @@ export default function Home() {
               <button
                 onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
                 style={{
-                  marginTop: "auto",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                   width: "100%",
                   borderRadius: 999, padding: "14px 24px",
