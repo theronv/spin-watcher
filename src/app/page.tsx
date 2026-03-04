@@ -977,10 +977,9 @@ export default function Home() {
               ≥768px  → flex-row: left | right side-by-side (landscape / iPad)
           */}
           <div
-            className="md:flex-row"
+            className="flex flex-col md:flex-row"
             style={{
               position: "absolute", inset: 0,
-              display: "flex", flexDirection: "column",
               opacity:       isPlaying ? 0 : 1,
               pointerEvents: (mode !== "now-playing" || isPlaying) ? "none" : "auto",
               transition:    `opacity 0.32s ${EASE}`,
@@ -1204,24 +1203,27 @@ export default function Home() {
           </div>
 
           {/* ════════════ PLAYING SUB-PANEL (isPlaying) ════════════ */}
+          {/*
+            Portrait (<768px):  flex-col — vinyl on top, info below
+            Landscape (≥768px): flex-row — vinyl left, info right
+          */}
           <div
+            className="flex flex-col md:flex-row"
             style={{
               position: "absolute", inset: 0,
-              display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center",
               padding: "max(env(safe-area-inset-top), 20px) 32px 16px",
-              gap: "clamp(10px, 2vh, 22px)",
+              gap: "clamp(14px, 3vw, 28px)",
               opacity:       isPlaying ? 1 : 0,
               pointerEvents: (mode === "now-playing" && isPlaying) ? "auto" : "none",
               transition:    `opacity 0.4s ${EASE}`,
             }}
           >
-            {/* Spinning vinyl disc */}
+            {/* Spinning vinyl disc — size governed by .vinyl-disc CSS class */}
             <div
+              className="vinyl-disc"
               style={{
-                width:    "clamp(190px, 55vw, 300px)",
-                height:   "clamp(190px, 55vw, 300px)",
-                borderRadius: "50%", overflow: "hidden", flexShrink: 0,
+                flexShrink: 0, borderRadius: "50%", overflow: "hidden",
                 border: "3px solid rgba(201,168,76,0.22)",
                 boxShadow: "0 0 0 10px rgba(201,168,76,0.05), 0 30px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.04)",
                 animation: "vinyl-spin 4s linear infinite",
@@ -1237,61 +1239,66 @@ export default function Home() {
               )}
             </div>
 
-            {/* NOW PLAYING label + waveform in one row */}
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "nowrap" }}>
-              <span
-                className="now-playing-dot"
-                style={{ width: 8, height: 8, borderRadius: "50%", background: GOLD, flexShrink: 0, display: "block" }}
-              />
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.25em", color: GOLD, whiteSpace: "nowrap" }}>
-                NOW PLAYING
-              </span>
-              {/* Waveform bars inline */}
-              <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 20, flexShrink: 0 }}>
-                {WAVE_DURATIONS.map((dur, i) => (
-                  <div
-                    key={i}
-                    className="wave-bar"
-                    style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Title */}
-            <p
-              className="line-clamp-2"
-              style={{
-                fontFamily:  "var(--font-playfair)", fontWeight: 900,
-                fontSize:    "clamp(1rem, 4vw, 1.45rem)",
-                lineHeight:  1.2, color: "#f5f0e8",
-                textAlign:   "center", maxWidth: "80vw",
-              }}
-            >
-              {viewingRecord?.title ?? ""}
-            </p>
-
-            {/* Artist */}
-            <p style={{
-              fontFamily: "var(--font-mono)", fontSize: "clamp(0.55rem, 1.5vw, 0.68rem)",
-              color: "#5a4828", letterSpacing: "0.1em", textAlign: "center",
-            }}>
-              {viewingRecord?.artist?.toUpperCase() ?? ""}
-            </p>
-
-            {/* Play count pill */}
+            {/* Info column: NOW PLAYING, title, artist, plays */}
             <div style={{
-              display: "flex", alignItems: "center", gap: 8,
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 999, padding: "7px 18px",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              gap: "clamp(8px, 1.5vh, 16px)", minWidth: 0,
             }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
-                {npPlayData?.play_count ?? 0}
-              </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
-                {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
-              </span>
+              {/* NOW PLAYING label + waveform */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "nowrap" }}>
+                <span
+                  className="now-playing-dot"
+                  style={{ width: 8, height: 8, borderRadius: "50%", background: GOLD, flexShrink: 0, display: "block" }}
+                />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.25em", color: GOLD, whiteSpace: "nowrap" }}>
+                  NOW PLAYING
+                </span>
+                <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 20, flexShrink: 0 }}>
+                  {WAVE_DURATIONS.map((dur, i) => (
+                    <div
+                      key={i}
+                      className="wave-bar"
+                      style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Title */}
+              <p
+                className="line-clamp-2"
+                style={{
+                  fontFamily: "var(--font-playfair)", fontWeight: 900,
+                  fontSize:   "clamp(0.95rem, 3.5vw, 1.4rem)",
+                  lineHeight: 1.2, color: "#f5f0e8",
+                  textAlign:  "center", maxWidth: "70vw",
+                }}
+              >
+                {viewingRecord?.title ?? ""}
+              </p>
+
+              {/* Artist */}
+              <p style={{
+                fontFamily: "var(--font-mono)", fontSize: "clamp(0.55rem, 1.5vw, 0.68rem)",
+                color: "#5a4828", letterSpacing: "0.1em", textAlign: "center",
+              }}>
+                {viewingRecord?.artist?.toUpperCase() ?? ""}
+              </p>
+
+              {/* Play count pill */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 999, padding: "7px 18px",
+              }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
+                  {npPlayData?.play_count ?? 0}
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                  {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
+                </span>
+              </div>
             </div>
           </div>
 

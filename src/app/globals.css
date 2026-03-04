@@ -134,6 +134,20 @@ body::after {
   opacity: 1;
 }
 
+/* ── Now-playing vinyl disc (responsive by orientation) ──────────────────── */
+.vinyl-disc {
+  /* Portrait / tall viewports */
+  width:  clamp(160px, min(44vh, 55vw), 260px);
+  height: clamp(160px, min(44vh, 55vw), 260px);
+}
+@media (orientation: landscape) {
+  .vinyl-disc {
+    /* Landscape: constrain harder on vh since vertical space is limited */
+    width:  clamp(120px, min(52vh, 38vw), 240px);
+    height: clamp(120px, min(52vh, 38vw), 240px);
+  }
+}
+
 /* ── Waveform bars ────────────────────────────────────────────────────────── */
 @keyframes waveform-bar {
   0%, 100% { height: 3px; }

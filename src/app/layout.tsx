@@ -1,7 +1,13 @@
 import "./globals.css";
 import { Playfair_Display, Space_Mono } from "next/font/google";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import React from "react";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
