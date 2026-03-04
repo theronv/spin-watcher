@@ -971,7 +971,13 @@ export default function Home() {
         <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
 
           {/* ════════════ DETAIL SUB-PANEL (!isPlaying) ════════════ */}
+          {/*
+            Layout switches at 768px (md:):
+              <768px  → flex-col: left stacks above right (portrait / iPhone)
+              ≥768px  → flex-row: left | right side-by-side (landscape / iPad)
+          */}
           <div
+            className="md:flex-row"
             style={{
               position: "absolute", inset: 0,
               display: "flex", flexDirection: "column",
@@ -980,143 +986,118 @@ export default function Home() {
               transition:    `opacity 0.32s ${EASE}`,
             }}
           >
-            {/* ── Above-fold: non-scrollable, always visible ── */}
-            <div style={{
-              flexShrink: 0,
-              padding: "max(env(safe-area-inset-top), 16px) 22px 0",
-            }}>
-              <div className="flex flex-col sm:flex-row" style={{ gap: 20, alignItems: "center", paddingBottom: 20 }}>
 
-                {/* Album art */}
-                <div style={{
-                  width:    "clamp(150px, 42vw, 240px)",
-                  height:   "clamp(150px, 42vw, 240px)",
+            {/* ── LEFT COLUMN: art + metadata + CTA ── */}
+            <div
+              className="scrollbar-hide md:w-[44%] md:overflow-y-auto border-b border-white/5 md:border-b-0 md:border-r"
+              style={{
+                flexShrink: 0,
+                display: "flex", flexDirection: "column",
+                gap: 14,
+                padding: "max(env(safe-area-inset-top), 16px) 22px 22px",
+              }}
+            >
+              {/* Album art */}
+              <div
+                className="self-center"
+                style={{
+                  width:  "clamp(140px, 38vw, 210px)",
+                  height: "clamp(140px, 38vw, 210px)",
                   flexShrink: 0, borderRadius: 16, overflow: "hidden",
                   background: "rgba(255,255,255,0.03)",
-                  boxShadow:  "0 20px 60px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.05)",
-                }}>
-                  {viewingRecord && viewingRecord.cover_url ? (
-                    <img
-                      src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
-                      alt={viewingRecord.title}
-                      draggable={false}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Disc3 size={48} strokeWidth={1} style={{ color: "#2a1f10" }} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Info + primary actions */}
-                <div className="flex flex-col items-center sm:items-start" style={{ flex: 1, minWidth: 0, gap: 14, width: "100%" }}>
-
-                  {/* Title + artist */}
-                  <div className="text-center sm:text-left" style={{ width: "100%" }}>
-                    <p
-                      className="line-clamp-2"
-                      style={{
-                        fontFamily: "var(--font-playfair)", fontWeight: 900,
-                        fontSize:   "clamp(1.05rem, 3.5vw, 1.55rem)",
-                        lineHeight: 1.2, color: "#f5f0e8",
-                      }}
-                    >
-                      {viewingRecord?.title ?? ""}
-                    </p>
-                    <p style={{
-                      fontFamily: "var(--font-mono)", fontSize: "0.63rem",
-                      color: "#5a4828", marginTop: 6, letterSpacing: "0.1em",
-                    }}>
-                      {viewingRecord?.artist?.toUpperCase() ?? ""}
-                    </p>
+                  boxShadow: "0 20px 60px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.05)",
+                }}
+              >
+                {viewingRecord && viewingRecord.cover_url ? (
+                  <img
+                    src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
+                    alt={viewingRecord.title}
+                    draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Disc3 size={48} strokeWidth={1} style={{ color: "#2a1f10" }} />
                   </div>
-
-                  {/* Play count + inline editor */}
-                  {npIsEditing ? (
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(201,168,76,0.25)",
-                      borderRadius: 20, padding: "10px 16px",
-                    }}>
-                      <input
-                        type="number" inputMode="numeric" min="0" max="9999"
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter")  saveEdit();
-                          if (e.key === "Escape") setEditingId(null);
-                        }}
-                        style={{
-                          width: 60, background: "transparent",
-                          color: "#f5f0e8", fontSize: "1.1rem",
-                          textAlign: "center", border: "none", outline: "none",
-                          fontFamily: "var(--font-mono)", fontWeight: 700,
-                        }}
-                        autoFocus
-                      />
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#3a2c14" }}>plays</span>
-                      <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
-                      <button onClick={() => setEditingId(null)} style={{ color: "#3a2c14", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8,
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        borderRadius: 999, padding: "7px 18px",
-                        cursor: "pointer", transition: "border-color 0.2s",
-                      }}
-                    >
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
-                        {npPlayData?.play_count ?? 0}
-                      </span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
-                        {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
-                      </span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.48rem", color: "#3a2c14", letterSpacing: "0.1em", marginLeft: 2 }}>
-                        EDIT
-                      </span>
-                    </button>
-                  )}
-
-                </div>
+                )}
               </div>
 
-              {/* Divider */}
-              <div style={{ height: 1, background: "rgba(255,255,255,0.05)" }} />
-            </div>
+              {/* Title + artist */}
+              <div className="text-center md:text-left">
+                <p
+                  className="line-clamp-2"
+                  style={{
+                    fontFamily: "var(--font-playfair)", fontWeight: 900,
+                    fontSize:   "clamp(1.05rem, 3.5vw, 1.45rem)",
+                    lineHeight: 1.2, color: "#f5f0e8",
+                  }}
+                >
+                  {viewingRecord?.title ?? ""}
+                </p>
+                <p style={{
+                  fontFamily: "var(--font-mono)", fontSize: "0.63rem",
+                  color: "#5a4828", marginTop: 6, letterSpacing: "0.1em",
+                }}>
+                  {viewingRecord?.artist?.toUpperCase() ?? ""}
+                </p>
+              </div>
 
-            {/* ── Below-fold: scrollable metadata + tracklist ── */}
-            <div
-              className="scrollbar-hide"
-              style={{ flex: 1, overflowY: "auto", padding: "18px 22px 28px" }}
-            >
-              {albumLoading ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ height: 12, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: "50%", marginBottom: 6 }} />
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                    {[56, 72, 60, 50].map((w, i) => (
-                      <div key={i} style={{ height: 22, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: w }} />
-                    ))}
+              {/* Play count + inline editor */}
+              <div className="flex justify-center md:justify-start">
+                {npIsEditing ? (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(201,168,76,0.25)",
+                    borderRadius: 20, padding: "10px 16px",
+                  }}>
+                    <input
+                      type="number" inputMode="numeric" min="0" max="9999"
+                      value={editValue}
+                      onChange={e => setEditValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter")  saveEdit();
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      style={{
+                        width: 60, background: "transparent",
+                        color: "#f5f0e8", fontSize: "1.1rem",
+                        textAlign: "center", border: "none", outline: "none",
+                        fontFamily: "var(--font-mono)", fontWeight: 700,
+                      }}
+                      autoFocus
+                    />
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#3a2c14" }}>plays</span>
+                    <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
+                    <button onClick={() => setEditingId(null)} style={{ color: "#3a2c14", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {[90, 80, 85, 75, 88, 70].map((w, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, padding: "0 4px" }}>
-                        <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 20, flexShrink: 0 }} />
-                        <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, flex: 1, maxWidth: `${w}%` }} />
-                        <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 28, flexShrink: 0 }} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : albumDetails ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                ) : (
+                  <button
+                    onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 999, padding: "7px 18px",
+                      cursor: "pointer", transition: "border-color 0.2s",
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
+                      {npPlayData?.play_count ?? 0}
+                    </span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                      {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
+                    </span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.48rem", color: "#3a2c14", letterSpacing: "0.1em", marginLeft: 2 }}>
+                      EDIT
+                    </span>
+                  </button>
+                )}
+              </div>
 
-                  {/* Year · Label */}
+              {/* Year · Label + Genre pills (populated after albumDetails loads) */}
+              {albumDetails && (
+                <>
                   {(albumDetails.year || albumDetails.label) && (
                     <p style={{
                       fontFamily: "var(--font-mono)", fontSize: "0.58rem",
@@ -1125,8 +1106,6 @@ export default function Home() {
                       {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
                     </p>
                   )}
-
-                  {/* Genre + style pills */}
                   {(albumDetails.genres.length > 0 || albumDetails.styles.length > 0) && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {albumDetails.genres.map(g => (
@@ -1136,9 +1115,7 @@ export default function Home() {
                           border: "1px solid rgba(201,168,76,0.2)",
                           borderRadius: 999, fontFamily: "var(--font-mono)",
                           fontSize: "0.54rem", color: GOLD, letterSpacing: "0.06em",
-                        }}>
-                          {g}
-                        </span>
+                        }}>{g}</span>
                       ))}
                       {albumDetails.styles.map(s => (
                         <span key={s} style={{
@@ -1147,70 +1124,83 @@ export default function Home() {
                           border: "1px solid rgba(255,255,255,0.07)",
                           borderRadius: 999, fontFamily: "var(--font-mono)",
                           fontSize: "0.54rem", color: "#4a3820", letterSpacing: "0.06em",
-                        }}>
-                          {s}
-                        </span>
+                        }}>{s}</span>
                       ))}
                     </div>
                   )}
+                </>
+              )}
 
-                  {/* Mark as Playing */}
-                  <button
-                    onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                      width: "100%",
-                      borderRadius: 999, padding: "14px 32px",
-                      fontFamily: "var(--font-mono)", fontSize: "0.68rem",
-                      fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
-                      background: GOLD, color: "#0c0a07", border: "none", cursor: "pointer",
-                      boxShadow: "0 8px 28px -4px rgba(201,168,76,0.45)",
-                      transition: "transform 0.15s, box-shadow 0.2s",
-                    }}
-                  >
-                    <Play size={13} fill="#0c0a07" strokeWidth={0} />
-                    Mark as Playing
-                  </button>
+              {/* Mark as Playing */}
+              <button
+                onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
+                style={{
+                  marginTop: "auto",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  width: "100%",
+                  borderRadius: 999, padding: "14px 24px",
+                  fontFamily: "var(--font-mono)", fontSize: "0.68rem",
+                  fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+                  background: GOLD, color: "#0c0a07", border: "none", cursor: "pointer",
+                  boxShadow: "0 8px 28px -4px rgba(201,168,76,0.45)",
+                  transition: "transform 0.15s, box-shadow 0.2s",
+                }}
+              >
+                <Play size={13} fill="#0c0a07" strokeWidth={0} />
+                Mark as Playing
+              </button>
+            </div>
 
-                  {/* Tracklist */}
-                  {albumDetails.tracklist.length > 0 && (
-                    <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
-                      {albumDetails.tracklist.map((track, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: "flex", alignItems: "baseline", gap: 10, padding: "9px 14px",
-                            borderBottom: i < albumDetails.tracklist.length - 1
-                              ? "1px solid rgba(255,255,255,0.04)" : "none",
-                          }}
-                        >
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", width: 18, flexShrink: 0, textAlign: "right" }}>
-                            {track.position}
-                          </span>
-                          <span style={{ flex: 1, fontSize: "0.75rem", color: "#c8bfa8", lineHeight: 1.3 }}>
-                            {track.title}
-                          </span>
-                          {track.duration && (
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", flexShrink: 0 }}>
-                              {track.duration}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                      {albumDetails.runtime && (
-                        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", letterSpacing: "0.08em" }}>
-                            {albumDetails.runtime} total
-                          </span>
-                        </div>
+            {/* ── RIGHT COLUMN: scrollable tracklist ── */}
+            <div
+              className="scrollbar-hide"
+              style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 28px" }}
+            >
+              {albumLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[90, 80, 85, 75, 88, 70, 82, 78].map((w, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, padding: "0 4px" }}>
+                      <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 20, flexShrink: 0 }} />
+                      <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, flex: 1, maxWidth: `${w}%` }} />
+                      <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 28, flexShrink: 0 }} />
+                    </div>
+                  ))}
+                </div>
+              ) : albumDetails && albumDetails.tracklist.length > 0 ? (
+                <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  {albumDetails.tracklist.map((track, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex", alignItems: "baseline", gap: 10, padding: "9px 14px",
+                        borderBottom: i < albumDetails.tracklist.length - 1
+                          ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      }}
+                    >
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", width: 18, flexShrink: 0, textAlign: "right" }}>
+                        {track.position}
+                      </span>
+                      <span style={{ flex: 1, fontSize: "0.75rem", color: "#c8bfa8", lineHeight: 1.3 }}>
+                        {track.title}
+                      </span>
+                      {track.duration && (
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", flexShrink: 0 }}>
+                          {track.duration}
+                        </span>
                       )}
+                    </div>
+                  ))}
+                  {albumDetails.runtime && (
+                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", letterSpacing: "0.08em" }}>
+                        {albumDetails.runtime} total
+                      </span>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div style={{ height: 20 }} />
-              )}
+              ) : null}
             </div>
+
           </div>
 
           {/* ════════════ PLAYING SUB-PANEL (isPlaying) ════════════ */}
