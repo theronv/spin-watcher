@@ -74,7 +74,7 @@ const WAVE_DURATIONS = [0.7, 0.5, 0.9, 0.6, 0.8, 0.55, 0.75, 0.95, 0.6, 0.85, 0.
 const HGAP          = 10;
 const PAD           = 14;
 const TEXT_HEIGHT   = 64;  // title + artist + genre tag + padding
-const NP_BAR_HEIGHT = 82;  // height to subtract for persistent NP bar
+const NP_BAR_HEIGHT = 100;  // height to subtract for persistent NP bar
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -967,76 +967,145 @@ export default function Home() {
           transition:    `opacity 0.32s ${EASE}, transform 0.32s ${EASE}`,
         }}
       >
-        {/* ── Main content: detail + playing sub-panels ── */}
+        {/* ── Main content area ── */}
         <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
 
-          {/* ── Detail sub-panel (shown when !isPlaying) ── */}
+          {/* ════════════ DETAIL SUB-PANEL (!isPlaying) ════════════ */}
           <div
-            className="scrollbar-hide"
             style={{
-              position: "absolute", inset: 0, overflowY: "auto",
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column",
               opacity:       isPlaying ? 0 : 1,
               pointerEvents: (mode !== "now-playing" || isPlaying) ? "none" : "auto",
               transition:    `opacity 0.32s ${EASE}`,
             }}
           >
+            {/* ── Above-fold: non-scrollable, always visible ── */}
             <div style={{
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 20, padding: "max(env(safe-area-inset-top), 12px) 28px 28px",
+              flexShrink: 0,
+              padding: "max(env(safe-area-inset-top), 16px) 22px 0",
             }}>
+              <div className="flex flex-col sm:flex-row" style={{ gap: 20, alignItems: "center", paddingBottom: 20 }}>
 
-              {/* Album art */}
-              <div
-                style={{
-                  width: "min(80vw, 360px)", height: "min(80vw, 360px)",
-                  borderRadius: 20, overflow: "hidden",
+                {/* Album art */}
+                <div style={{
+                  width:    "clamp(150px, 42vw, 240px)",
+                  height:   "clamp(150px, 42vw, 240px)",
+                  flexShrink: 0, borderRadius: 16, overflow: "hidden",
                   background: "rgba(255,255,255,0.03)",
-                  boxShadow: "0 28px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.05)",
-                  flexShrink: 0,
-                }}
-              >
-                {viewingRecord && (
-                  <img
-                    src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
-                    alt={viewingRecord.title}
-                    draggable={false}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                )}
-              </div>
-
-              {/* Title + artist */}
-              <div style={{ textAlign: "center", width: "100%", maxWidth: 340 }}>
-                <p
-                  className="line-clamp-2"
-                  style={{
-                    fontFamily: "var(--font-playfair)", fontSize: "1.6rem",
-                    fontWeight: 900, letterSpacing: "-0.01em",
-                    lineHeight: 1.15, color: "#f5f0e8",
-                  }}
-                >
-                  {viewingRecord?.title ?? ""}
-                </p>
-                <p style={{
-                  fontFamily: "var(--font-mono)", fontSize: "0.7rem",
-                  color: "#5a4828", marginTop: 8, letterSpacing: "0.1em",
+                  boxShadow:  "0 20px 60px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.05)",
                 }}>
-                  {viewingRecord?.artist?.toUpperCase() ?? ""}
-                </p>
+                  {viewingRecord && viewingRecord.cover_url ? (
+                    <img
+                      src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
+                      alt={viewingRecord.title}
+                      draggable={false}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Disc3 size={48} strokeWidth={1} style={{ color: "#2a1f10" }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Info + primary actions */}
+                <div className="flex flex-col items-center sm:items-start" style={{ flex: 1, minWidth: 0, gap: 14, width: "100%" }}>
+
+                  {/* Title + artist */}
+                  <div className="text-center sm:text-left" style={{ width: "100%" }}>
+                    <p
+                      className="line-clamp-2"
+                      style={{
+                        fontFamily: "var(--font-playfair)", fontWeight: 900,
+                        fontSize:   "clamp(1.05rem, 3.5vw, 1.55rem)",
+                        lineHeight: 1.2, color: "#f5f0e8",
+                      }}
+                    >
+                      {viewingRecord?.title ?? ""}
+                    </p>
+                    <p style={{
+                      fontFamily: "var(--font-mono)", fontSize: "0.63rem",
+                      color: "#5a4828", marginTop: 6, letterSpacing: "0.1em",
+                    }}>
+                      {viewingRecord?.artist?.toUpperCase() ?? ""}
+                    </p>
+                  </div>
+
+                  {/* Play count + inline editor */}
+                  {npIsEditing ? (
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(201,168,76,0.25)",
+                      borderRadius: 20, padding: "10px 16px",
+                    }}>
+                      <input
+                        type="number" inputMode="numeric" min="0" max="9999"
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter")  saveEdit();
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        style={{
+                          width: 60, background: "transparent",
+                          color: "#f5f0e8", fontSize: "1.1rem",
+                          textAlign: "center", border: "none", outline: "none",
+                          fontFamily: "var(--font-mono)", fontWeight: 700,
+                        }}
+                        autoFocus
+                      />
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#3a2c14" }}>plays</span>
+                      <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
+                      <button onClick={() => setEditingId(null)} style={{ color: "#3a2c14", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 999, padding: "7px 18px",
+                        cursor: "pointer", transition: "border-color 0.2s",
+                      }}
+                    >
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
+                        {npPlayData?.play_count ?? 0}
+                      </span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                        {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
+                      </span>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.48rem", color: "#3a2c14", letterSpacing: "0.1em", marginLeft: 2 }}>
+                        EDIT
+                      </span>
+                    </button>
+                  )}
+
+                </div>
               </div>
 
-              {/* Metadata section */}
+              {/* Divider */}
+              <div style={{ height: 1, background: "rgba(255,255,255,0.05)" }} />
+            </div>
+
+            {/* ── Below-fold: scrollable metadata + tracklist ── */}
+            <div
+              className="scrollbar-hide"
+              style={{ flex: 1, overflowY: "auto", padding: "18px 22px 28px" }}
+            >
               {albumLoading ? (
-                <div style={{ width: "100%", maxWidth: 340 }}>
-                  <div style={{ height: 12, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: "60%", margin: "0 auto 10px" }} />
-                  <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 12 }}>
-                    {[56, 72, 60].map((w, i) => (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ height: 12, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: "50%", marginBottom: 6 }} />
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    {[56, 72, 60, 50].map((w, i) => (
                       <div key={i} style={{ height: 22, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: w }} />
                     ))}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {[90, 80, 85, 75, 88, 70].map((w, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, padding: "0 12px" }}>
+                      <div key={i} style={{ display: "flex", gap: 10, padding: "0 4px" }}>
                         <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 20, flexShrink: 0 }} />
                         <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, flex: 1, maxWidth: `${w}%` }} />
                         <div style={{ height: 10, background: "rgba(255,255,255,0.04)", borderRadius: 999, width: 28, flexShrink: 0 }} />
@@ -1045,14 +1114,13 @@ export default function Home() {
                   </div>
                 </div>
               ) : albumDetails ? (
-                <div style={{ width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
                   {/* Year · Label */}
                   {(albumDetails.year || albumDetails.label) && (
                     <p style={{
-                      textAlign: "center", fontFamily: "var(--font-mono)",
-                      fontSize: "0.6rem", color: "#5a4828",
-                      letterSpacing: "0.12em", textTransform: "uppercase",
+                      fontFamily: "var(--font-mono)", fontSize: "0.58rem",
+                      color: "#5a4828", letterSpacing: "0.12em", textTransform: "uppercase",
                     }}>
                       {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
                     </p>
@@ -1060,14 +1128,14 @@ export default function Home() {
 
                   {/* Genre + style pills */}
                   {(albumDetails.genres.length > 0 || albumDetails.styles.length > 0) && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {albumDetails.genres.map(g => (
                         <span key={g} style={{
                           padding: "4px 10px",
                           background: "rgba(201,168,76,0.07)",
                           border: "1px solid rgba(201,168,76,0.2)",
                           borderRadius: 999, fontFamily: "var(--font-mono)",
-                          fontSize: "0.56rem", color: GOLD, letterSpacing: "0.06em",
+                          fontSize: "0.54rem", color: GOLD, letterSpacing: "0.06em",
                         }}>
                           {g}
                         </span>
@@ -1078,13 +1146,31 @@ export default function Home() {
                           background: "rgba(255,255,255,0.03)",
                           border: "1px solid rgba(255,255,255,0.07)",
                           borderRadius: 999, fontFamily: "var(--font-mono)",
-                          fontSize: "0.56rem", color: "#4a3820", letterSpacing: "0.06em",
+                          fontSize: "0.54rem", color: "#4a3820", letterSpacing: "0.06em",
                         }}>
                           {s}
                         </span>
                       ))}
                     </div>
                   )}
+
+                  {/* Mark as Playing */}
+                  <button
+                    onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                      width: "100%",
+                      borderRadius: 999, padding: "14px 32px",
+                      fontFamily: "var(--font-mono)", fontSize: "0.68rem",
+                      fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+                      background: GOLD, color: "#0c0a07", border: "none", cursor: "pointer",
+                      boxShadow: "0 8px 28px -4px rgba(201,168,76,0.45)",
+                      transition: "transform 0.15s, box-shadow 0.2s",
+                    }}
+                  >
+                    <Play size={13} fill="#0c0a07" strokeWidth={0} />
+                    Mark as Playing
+                  </button>
 
                   {/* Tracklist */}
                   {albumDetails.tracklist.length > 0 && (
@@ -1121,89 +1207,20 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-              ) : null}
-
-              {/* Play count with inline editor */}
-              <div>
-                {npIsEditing ? (
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(201,168,76,0.25)",
-                    borderRadius: 20, padding: "10px 16px",
-                  }}>
-                    <input
-                      type="number" inputMode="numeric" min="0" max="9999"
-                      value={editValue}
-                      onChange={e => setEditValue(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter")  saveEdit();
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                      style={{
-                        width: 60, background: "transparent",
-                        color: "#f5f0e8", fontSize: "1.1rem",
-                        textAlign: "center", border: "none", outline: "none",
-                        fontFamily: "var(--font-mono)", fontWeight: 700,
-                      }}
-                      autoFocus
-                    />
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#3a2c14" }}>plays</span>
-                    <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
-                    <button onClick={() => setEditingId(null)} style={{ color: "#3a2c14", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => viewingRecord && openEditor(viewingRecord.discogs_id, npPlayData?.play_count ?? 0)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 999, padding: "8px 20px",
-                      cursor: "pointer", transition: "border-color 0.2s, transform 0.15s",
-                    }}
-                  >
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
-                      {npPlayData?.play_count ?? 0}
-                    </span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#4a3820", letterSpacing: "0.08em" }}>
-                      {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
-                    </span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.5rem", color: "#3a2c14", letterSpacing: "0.1em", marginLeft: 2 }}>
-                      EDIT
-                    </span>
-                  </button>
-                )}
-              </div>
-
-              {/* Mark as Playing */}
-              <button
-                onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  borderRadius: 999, padding: "14px 36px",
-                  fontFamily: "var(--font-mono)", fontSize: "0.7rem",
-                  fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
-                  background: GOLD, color: "#0c0a07", border: "none", cursor: "pointer",
-                  boxShadow: "0 8px 32px -4px rgba(201,168,76,0.45)",
-                  transition: "transform 0.15s, box-shadow 0.2s",
-                }}
-              >
-                <Play size={14} fill="#0c0a07" strokeWidth={0} />
-                Mark as Playing
-              </button>
-
-              <div style={{ height: 16 }} />
+              ) : (
+                <div style={{ height: 20 }} />
+              )}
             </div>
           </div>
 
-          {/* ── Playing sub-panel (shown when isPlaying) ── */}
+          {/* ════════════ PLAYING SUB-PANEL (isPlaying) ════════════ */}
           <div
             style={{
               position: "absolute", inset: 0,
-              display: "flex", flexDirection: "column", alignItems: "center",
-              justifyContent: "center", gap: 18,
-              padding: "max(env(safe-area-inset-top), 12px) 28px 28px",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              padding: "max(env(safe-area-inset-top), 20px) 32px 16px",
+              gap: "clamp(10px, 2vh, 22px)",
               opacity:       isPlaying ? 1 : 0,
               pointerEvents: (mode === "now-playing" && isPlaying) ? "auto" : "none",
               transition:    `opacity 0.4s ${EASE}`,
@@ -1212,12 +1229,12 @@ export default function Home() {
             {/* Spinning vinyl disc */}
             <div
               style={{
-                width: "min(72vw, 320px)", height: "min(72vw, 320px)",
-                borderRadius: "50%", overflow: "hidden",
+                width:    "clamp(190px, 55vw, 300px)",
+                height:   "clamp(190px, 55vw, 300px)",
+                borderRadius: "50%", overflow: "hidden", flexShrink: 0,
                 border: "3px solid rgba(201,168,76,0.22)",
                 boxShadow: "0 0 0 10px rgba(201,168,76,0.05), 0 30px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.04)",
                 animation: "vinyl-spin 4s linear infinite",
-                flexShrink: 0,
               }}
             >
               {viewingRecord && (
@@ -1230,60 +1247,64 @@ export default function Home() {
               )}
             </div>
 
-            {/* NOW PLAYING label */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* NOW PLAYING label + waveform in one row */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "nowrap" }}>
               <span
                 className="now-playing-dot"
                 style={{ width: 8, height: 8, borderRadius: "50%", background: GOLD, flexShrink: 0, display: "block" }}
               />
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.25em", color: GOLD }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.25em", color: GOLD, whiteSpace: "nowrap" }}>
                 NOW PLAYING
               </span>
+              {/* Waveform bars inline */}
+              <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 20, flexShrink: 0 }}>
+                {WAVE_DURATIONS.map((dur, i) => (
+                  <div
+                    key={i}
+                    className="wave-bar"
+                    style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
+                  />
+                ))}
+              </div>
             </div>
 
-            {/* Title + artist */}
-            <div style={{ textAlign: "center" }}>
-              <p
-                className="line-clamp-2"
-                style={{
-                  fontFamily: "var(--font-playfair)", fontSize: "1.4rem",
-                  fontWeight: 900, letterSpacing: "-0.01em",
-                  lineHeight: 1.2, color: "#f5f0e8",
-                }}
-              >
-                {viewingRecord?.title ?? ""}
-              </p>
-              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#5a4828", marginTop: 8, letterSpacing: "0.1em" }}>
-                {viewingRecord?.artist?.toUpperCase() ?? ""}
-              </p>
-            </div>
+            {/* Title */}
+            <p
+              className="line-clamp-2"
+              style={{
+                fontFamily:  "var(--font-playfair)", fontWeight: 900,
+                fontSize:    "clamp(1rem, 4vw, 1.45rem)",
+                lineHeight:  1.2, color: "#f5f0e8",
+                textAlign:   "center", maxWidth: "80vw",
+              }}
+            >
+              {viewingRecord?.title ?? ""}
+            </p>
 
-            {/* Play count */}
+            {/* Artist */}
+            <p style={{
+              fontFamily: "var(--font-mono)", fontSize: "clamp(0.55rem, 1.5vw, 0.68rem)",
+              color: "#5a4828", letterSpacing: "0.1em", textAlign: "center",
+            }}>
+              {viewingRecord?.artist?.toUpperCase() ?? ""}
+            </p>
+
+            {/* Play count pill */}
             <div style={{
               display: "flex", alignItems: "center", gap: 8,
               background: "rgba(255,255,255,0.04)",
               border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 999, padding: "8px 20px",
+              borderRadius: 999, padding: "7px 18px",
             }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
                 {npPlayData?.play_count ?? 0}
               </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
                 {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
               </span>
             </div>
-
-            {/* Waveform bars */}
-            <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 22 }}>
-              {WAVE_DURATIONS.map((dur, i) => (
-                <div
-                  key={i}
-                  className="wave-bar"
-                  style={{ animationDuration: `${dur}s`, animationDelay: `${i * 0.048}s` }}
-                />
-              ))}
-            </div>
           </div>
+
         </div>
 
         {/* ── Bottom nav bar (frosted) ── */}
