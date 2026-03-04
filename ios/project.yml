@@ -1,0 +1,62 @@
+name: NeedleDrop
+options:
+  bundleIdPrefix: com.theron
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    ENABLE_PREVIEWS: "YES"
+    TARGETED_DEVICE_FAMILY: "2"        # iPad only
+    SUPPORTS_MAC_DESIGNED_FOR_IPAD_DESTINATION: "YES"
+
+targets:
+  NeedleDrop:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: NeedleDrop
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "2"
+        UILaunchScreen:
+          UIColorName: BackgroundColor
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        CFBundleURLTypes:
+          - CFBundleURLName: com.theron.needledrop
+            CFBundleURLSchemes:
+              - needledrop
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            needle-drop.com:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: false
+              NSExceptionRequiresForwardSecrecy: false
+            api.discogs.com:
+              NSIncludesSubdomains: true
+              NSExceptionRequiresForwardSecrecy: false
+            img.discogs.com:
+              NSIncludesSubdomains: true
+              NSExceptionRequiresForwardSecrecy: false
+            i.discogs.com:
+              NSIncludesSubdomains: true
+              NSExceptionRequiresForwardSecrecy: false
+        UIRequiresFullScreen: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.theron.needledrop
+        INFOPLIST_FILE: Sources/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: N4QA64M2NU

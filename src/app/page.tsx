@@ -78,6 +78,15 @@ const NP_BAR_HEIGHT = 82;  // height to subtract for persistent NP bar
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Fetch wrapper that adds Bearer auth for the iOS WebView flow. */
+function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('nd_bearer_token') : null;
+  if (token) {
+    init = { ...init, headers: { ...(init.headers as Record<string, string>), Authorization: `Bearer ${token}` } };
+  }
+  return fetch(input, init);
+}
+
 function parseRecords(raw: unknown[]): RecordData[] {
   return (raw as Array<Record<string, unknown>>).map(r => ({
     discogs_id: String(r.discogs_id ?? ""),
@@ -318,7 +327,7 @@ export default function Home() {
   // ── Data loading ───────────────────────────────────────────────────────────
 
   const fetchPlays = useCallback(async () => {
-    const res = await fetch("/api/plays");
+    const res = await apiFetch("/api/plays");
     if (!res.ok) return;
     const data: PlayData[] = await res.json();
     const map: Record<string, PlayData> = {};
@@ -329,7 +338,7 @@ export default function Home() {
   const syncFromDiscogs = useCallback(async (username?: string) => {
     setSyncing(true);
     try {
-      const res = await fetch("/api/sync");
+      const res = await apiFetch("/api/sync");
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -343,8 +352,18 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
+      // 0. Mobile OAuth: extract Bearer token from ?nd_token= URL param (set by iOS app after OAuth)
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('nd_token');
+      if (urlToken) {
+        localStorage.setItem('nd_bearer_token', urlToken);
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('nd_token');
+        window.history.replaceState({}, '', clean.toString());
+      }
+
       // 1. Check auth session
-      const sessionRes = await fetch("/api/auth/session").catch(() => null);
+      const sessionRes = await apiFetch("/api/auth/session").catch(() => null);
       let sess: Session | null = null;
       if (sessionRes?.ok) {
         const data = await sessionRes.json() as { is_logged_in: boolean; username?: string; avatar_url?: string };
@@ -364,8 +383,8 @@ export default function Home() {
       // 3. Boot collection
       setLoading(true);
       try {
-        await fetch("/api/init");
-        const res  = await fetch("/api/records");
+        await apiFetch("/api/init");
+        const res  = await apiFetch("/api/records");
         const data = res.ok ? await res.json() : [];
         if (Array.isArray(data) && data.length > 0) {
           setRecords(parseRecords(data));
@@ -459,7 +478,7 @@ export default function Home() {
     let cancelled = false;
     setAlbumLoading(true);
     setAlbumDetails(null);
-    fetch(`/api/album/${viewingRecord.discogs_id}`)
+    apiFetch(`/api/album/${viewingRecord.discogs_id}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (!cancelled && data) setAlbumDetails(data as AlbumDetails); })
       .catch(() => {})
@@ -471,7 +490,7 @@ export default function Home() {
 
   const markPlaying = useCallback(async (discogs_id: string) => {
     setNowPlayingId(discogs_id);
-    const res = await fetch("/api/plays", {
+    const res = await apiFetch("/api/plays", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discogs_id }),
@@ -531,7 +550,7 @@ export default function Home() {
       ...prev,
       [id]: { discogs_id: id, play_count: n, last_played: prev[id]?.last_played ?? null },
     }));
-    const res = await fetch("/api/plays", {
+    const res = await apiFetch("/api/plays", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discogs_id: id, count: n }),
@@ -614,7 +633,9 @@ export default function Home() {
 
         {/* Connect button */}
         <a
-          href="/api/auth/discogs"
+          href={typeof window !== 'undefined' && !!(window as { webkit?: unknown }).webkit
+            ? '/api/auth/discogs?redirect_uri=needledrop%3A%2F%2F'
+            : '/api/auth/discogs'}
           style={{
             display: "flex", alignItems: "center", gap: 10,
             background: GOLD, color: "#0c0a07",
