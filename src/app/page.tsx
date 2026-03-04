@@ -989,10 +989,10 @@ export default function Home() {
 
             {/* ── LEFT COLUMN: art + metadata + CTA ── */}
             <div
-              className="scrollbar-hide md:w-[44%] md:overflow-y-auto border-b border-white/5 md:border-b-0 md:border-r"
+              className="scrollbar-hide md:w-[44%] md:overflow-y-auto border-b border-white/5 md:border-b-0 md:border-r justify-center md:justify-start"
               style={{
                 flexShrink: 0,
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                display: "flex", flexDirection: "column", alignItems: "center",
                 gap: 14,
                 padding: "max(env(safe-area-inset-top), 16px) 22px 22px",
               }}
@@ -1131,12 +1131,12 @@ export default function Home() {
                 </>
               )}
 
-              {/* Mark as Playing */}
+              {/* Mark as Playing — portrait only; hidden in landscape (button moves to right column) */}
               <button
+                className="flex md:hidden items-center justify-center"
                 onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
                 style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                  width: "100%",
+                  gap: 10, width: "100%",
                   borderRadius: 999, padding: "14px 24px",
                   fontFamily: "var(--font-mono)", fontSize: "0.68rem",
                   fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
@@ -1150,11 +1150,33 @@ export default function Home() {
               </button>
             </div>
 
-            {/* ── RIGHT COLUMN: scrollable tracklist ── */}
-            <div
-              className="scrollbar-hide"
-              style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 28px" }}
-            >
+            {/* ── RIGHT COLUMN: Mark as Playing (landscape) + scrollable tracklist ── */}
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+
+              {/* Mark as Playing — landscape only, pinned above tracklist */}
+              <button
+                className="hidden md:flex items-center justify-center"
+                onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
+                style={{
+                  flexShrink: 0,
+                  gap: 10, margin: "18px 22px 0",
+                  borderRadius: 999, padding: "14px 24px",
+                  fontFamily: "var(--font-mono)", fontSize: "0.68rem",
+                  fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+                  background: GOLD, color: "#0c0a07", border: "none", cursor: "pointer",
+                  boxShadow: "0 8px 28px -4px rgba(201,168,76,0.45)",
+                  transition: "transform 0.15s, box-shadow 0.2s",
+                }}
+              >
+                <Play size={13} fill="#0c0a07" strokeWidth={0} />
+                Mark as Playing
+              </button>
+
+              {/* Scrollable tracklist */}
+              <div
+                className="scrollbar-hide"
+                style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 28px" }}
+              >
               {albumLoading ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {[90, 80, 85, 75, 88, 70, 82, 78].map((w, i) => (
@@ -1198,7 +1220,8 @@ export default function Home() {
                   )}
                 </div>
               ) : null}
-            </div>
+              </div>{/* end scrollable tracklist */}
+            </div>{/* end right column */}
 
           </div>
 
