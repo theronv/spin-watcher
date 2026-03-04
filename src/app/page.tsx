@@ -457,18 +457,45 @@ export default function Home() {
   );
 
   // ── Grid layout ───────────────────────────────────────────────────────────
-  // Breakpoints: narrow → 2 cols, tablet/iPad portrait → 3 cols, iPad landscape → 3 cols, large → 4 cols
-  const colCount  = containerDims.w < 600 ? 2 : containerDims.w < 1200 ? 3 : 4;
-  const cardWidth = containerDims.w > 0
-    ? Math.floor((containerDims.w - PAD * 2 - HGAP * (colCount - 1)) / colCount)
-    : 150;
-  // Cap art height so at least 2.2 rows are visible above the fold.
-  // On portrait (tall viewports) this equals cardWidth (square art).
-  // On landscape (short viewports) this shrinks the art to keep 2+ rows in view.
-  const listHeight   = containerDims.h > 0 ? containerDims.h - NP_BAR_HEIGHT : 0;
-  const maxArtHeight = listHeight > 0 ? Math.floor(listHeight / 2.2) - TEXT_HEIGHT : cardWidth;
-  const artHeight    = containerDims.w > 0 ? Math.min(cardWidth, Math.max(80, maxArtHeight)) : cardWidth;
-  const rowHeight    = artHeight + TEXT_HEIGHT;
+  //
+  // Two distinct strategies based on orientation:
+  //
+  // PORTRAIT  — columns are width-driven; art is always square at cardWidth.
+  //             Standard masonry-style multi-row grid.
+  //
+  // LANDSCAPE — art size is height-driven so covers are never cropped.
+  //             targetRows sets how many full rows should be visible:
+  //               iPhone landscape (grid h < 320px) → 1 row
+  //               iPad landscape   (grid h ≥ 320px) → 2 rows
+  //             artHeight fills that fraction of list height.
+  //             colCount derives from how many square cards fit across.
+  //             Row div is centred since cards won't span the full width.
+  //
+  const listHeight  = containerDims.h > 0 ? containerDims.h - NP_BAR_HEIGHT : 0;
+  const isLandscape = containerDims.w > 0 && containerDims.h > 0
+    && containerDims.w > containerDims.h * 1.1;
+
+  let artHeight: number;
+  let colCount:  number;
+  let cardWidth: number;
+
+  if (isLandscape && listHeight > 0) {
+    const targetRows = containerDims.h < 320 ? 1 : 2;
+    // Square art sized to show exactly targetRows (with a small gap so the next
+    // row is barely visible as a scroll hint).
+    artHeight = Math.max(60, Math.floor((listHeight - HGAP * (targetRows - 1)) / targetRows) - TEXT_HEIGHT);
+    cardWidth = artHeight;                                                        // square cards
+    colCount  = Math.max(2, Math.floor((containerDims.w - PAD * 2 + HGAP) / (artHeight + HGAP)));
+  } else {
+    // Portrait: fill full width with fixed column count.
+    colCount  = containerDims.w < 600 ? 2 : containerDims.w < 1200 ? 3 : 4;
+    cardWidth = containerDims.w > 0
+      ? Math.floor((containerDims.w - PAD * 2 - HGAP * (colCount - 1)) / colCount)
+      : 150;
+    artHeight = cardWidth;                                                        // square art
+  }
+
+  const rowHeight = artHeight + TEXT_HEIGHT;
 
   const rows = useMemo(() => {
     const result: RecordData[][] = [];
@@ -937,7 +964,7 @@ export default function Home() {
               className="scrollbar-hide"
             >
               {({ index, style }: { index: number; style: React.CSSProperties }) => (
-                <div style={{ ...style, display: "flex", gap: HGAP, padding: `4px ${PAD}px 0`, alignItems: "flex-start" }}>
+                <div style={{ ...style, display: "flex", gap: HGAP, padding: `4px ${PAD}px 0`, alignItems: "flex-start", justifyContent: isLandscape ? "center" : "flex-start" }}>
                   {rows[index].map((record, j) => {
                     const globalIndex = index * colCount + j;
                     return (
