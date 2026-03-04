@@ -18,7 +18,12 @@ export async function GET(request: Request) {
           GROUP BY discogs_id`,
     args: [session.username],
   });
-  return NextResponse.json(toRows(result));
+  const rows = toRows(result).map(r => ({
+    discogs_id:  String(r.discogs_id),
+    play_count:  Number(r.play_count),
+    last_played: r.last_played ?? null,
+  }));
+  return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {

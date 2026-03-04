@@ -492,12 +492,22 @@ export default function Home() {
     setNowPlayingId(discogs_id);
     setMode("now-playing");
     setIsPlaying(true);
+    // Optimistically increment so NOW PLAYING shows the correct count immediately.
+    setPlays(prev => ({
+      ...prev,
+      [discogs_id]: {
+        discogs_id,
+        play_count:  (prev[discogs_id]?.play_count ?? 0) + 1,
+        last_played: new Date().toISOString(),
+      },
+    }));
     const res = await apiFetch("/api/plays", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discogs_id }),
     });
     if (!res.ok) return;
+    // Confirm with actual DB value (handles concurrent plays from other sessions).
     const { play_count, last_played } = await res.json();
     setPlays(prev => ({ ...prev, [discogs_id]: { discogs_id, play_count, last_played } }));
   }, []);
