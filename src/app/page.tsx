@@ -785,7 +785,7 @@ export default function Home() {
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: GOLD, letterSpacing: "0.05em", fontWeight: 700 }}>
                   {isFiltering ? displayed.length : records.length}
                 </span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#3a2c14" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#7a6240" }}>
                   {isFiltering ? `/ ${records.length}` : "records"}
                 </span>
               </div>
@@ -796,7 +796,7 @@ export default function Home() {
                 disabled={syncing}
                 aria-label="Sync collection"
                 style={{
-                  padding: "6px", color: "#3a2c14", background: "transparent",
+                  padding: "6px", color: "#7a6240", background: "transparent",
                   border: "none", cursor: "pointer", transition: "color 0.2s",
                   opacity: syncing ? 0.4 : 1,
                 }}
@@ -830,7 +830,7 @@ export default function Home() {
                     href="/api/auth/logout"
                     style={{
                       fontFamily: "var(--font-mono)", fontSize: "0.52rem",
-                      color: "#3a2c14", letterSpacing: "0.08em",
+                      color: "#8a7050", letterSpacing: "0.08em",
                       textDecoration: "none", lineHeight: 1,
                     }}
                   >
@@ -849,7 +849,7 @@ export default function Home() {
               border: "1px solid rgba(255,255,255,0.07)",
               borderRadius: 12, padding: "8px 12px",
             }}>
-              <Search size={13} style={{ color: "#3a2c14", flexShrink: 0 }} />
+              <Search size={13} style={{ color: "#7a6240", flexShrink: 0 }} />
               <input
                 type="text"
                 value={filter}
@@ -863,7 +863,7 @@ export default function Home() {
                 }}
               />
               {filter && (
-                <button onClick={() => setFilter("")} style={{ color: "#3a2c14", background: "transparent", border: "none", cursor: "pointer" }}>
+                <button onClick={() => setFilter("")} style={{ color: "#7a6240", background: "transparent", border: "none", cursor: "pointer" }}>
                   <X size={13} />
                 </button>
               )}
@@ -883,8 +883,8 @@ export default function Home() {
                     fontFamily: "var(--font-mono)", fontSize: "0.6rem",
                     letterSpacing: "0.08em", fontWeight: active ? 700 : 400,
                     background: active ? GOLD : "transparent",
-                    color: active ? "#0c0a07" : "#4a3820",
-                    border: active ? `1px solid ${GOLD}` : "1px solid rgba(255,255,255,0.07)",
+                    color: active ? "#0c0a07" : "#9a8055",
+                    border: active ? `1px solid ${GOLD}` : "1px solid rgba(255,255,255,0.12)",
                     cursor: "pointer", transition: "all 0.2s ease", whiteSpace: "nowrap",
                   }}
                 >
@@ -908,8 +908,8 @@ export default function Home() {
                       fontFamily: "var(--font-mono)", fontSize: "0.56rem",
                       letterSpacing: "0.06em", fontWeight: active ? 700 : 400,
                       background: active ? "rgba(201,168,76,0.18)" : "transparent",
-                      color: active ? GOLD : "#3a2c14",
-                      border: active ? `1px solid rgba(201,168,76,0.5)` : "1px solid rgba(255,255,255,0.05)",
+                      color: active ? GOLD : "#8a7050",
+                      border: active ? `1px solid rgba(201,168,76,0.5)` : "1px solid rgba(255,255,255,0.1)",
                       cursor: "pointer", transition: "all 0.18s ease", whiteSpace: "nowrap",
                     }}
                   >
@@ -1034,7 +1034,7 @@ export default function Home() {
 
             {/* ── LEFT COLUMN: art + metadata + CTA ── */}
             <div
-              className="scrollbar-hide md:w-[44%] md:overflow-y-auto border-b border-white/5 md:border-b-0 md:border-r justify-center md:justify-start"
+              className="scrollbar-hide md:w-[44%] md:overflow-y-auto border-b border-white/5 md:border-b-0 md:border-r justify-center"
               style={{
                 flexShrink: 0,
                 display: "flex", flexDirection: "column", alignItems: "center",
@@ -1080,7 +1080,7 @@ export default function Home() {
                 </p>
                 <p style={{
                   fontFamily: "var(--font-mono)", fontSize: "0.63rem",
-                  color: "#5a4828", marginTop: 6, letterSpacing: "0.1em",
+                  color: "#9a8055", marginTop: 6, letterSpacing: "0.1em",
                 }}>
                   {viewingRecord?.artist?.toUpperCase() ?? ""}
                 </p>
@@ -1111,9 +1111,9 @@ export default function Home() {
                       }}
                       autoFocus
                     />
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#3a2c14" }}>plays</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "#8a7050" }}>plays</span>
                     <button onClick={saveEdit} style={{ color: GOLD, fontWeight: 700, fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✓</button>
-                    <button onClick={() => setEditingId(null)} style={{ color: "#3a2c14", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+                    <button onClick={() => setEditingId(null)} style={{ color: "#8a7050", fontSize: "1.1rem", background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
                   </div>
                 ) : (
                   <button
@@ -1129,10 +1129,10 @@ export default function Home() {
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
                       {npPlayData?.play_count ?? 0}
                     </span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#8a7050", letterSpacing: "0.08em" }}>
                       {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
                     </span>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.48rem", color: "#3a2c14", letterSpacing: "0.1em", marginLeft: 2 }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.48rem", color: "#7a6240", letterSpacing: "0.1em", marginLeft: 2 }}>
                       EDIT
                     </span>
                   </button>
@@ -1145,7 +1145,7 @@ export default function Home() {
                   {(albumDetails.year || albumDetails.label) && (
                     <p style={{
                       fontFamily: "var(--font-mono)", fontSize: "0.58rem",
-                      color: "#5a4828", letterSpacing: "0.12em", textTransform: "uppercase",
+                      color: "#9a8055", letterSpacing: "0.12em", textTransform: "uppercase",
                       textAlign: "center",
                     }}>
                       {[albumDetails.year, albumDetails.label].filter(Boolean).join("  ·  ")}
@@ -1168,7 +1168,7 @@ export default function Home() {
                           background: "rgba(255,255,255,0.03)",
                           border: "1px solid rgba(255,255,255,0.07)",
                           borderRadius: 999, fontFamily: "var(--font-mono)",
-                          fontSize: "0.54rem", color: "#4a3820", letterSpacing: "0.06em",
+                          fontSize: "0.54rem", color: "#8a7050", letterSpacing: "0.06em",
                         }}>{s}</span>
                       ))}
                     </div>
@@ -1243,14 +1243,14 @@ export default function Home() {
                           ? "1px solid rgba(255,255,255,0.04)" : "none",
                       }}
                     >
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", width: 18, flexShrink: 0, textAlign: "right" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#7a6240", width: 18, flexShrink: 0, textAlign: "right" }}>
                         {track.position}
                       </span>
                       <span style={{ flex: 1, fontSize: "0.75rem", color: "#c8bfa8", lineHeight: 1.3 }}>
                         {track.title}
                       </span>
                       {track.duration && (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", flexShrink: 0 }}>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#7a6240", flexShrink: 0 }}>
                           {track.duration}
                         </span>
                       )}
@@ -1258,7 +1258,7 @@ export default function Home() {
                   ))}
                   {albumDetails.runtime && (
                     <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#3a2c14", letterSpacing: "0.08em" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#7a6240", letterSpacing: "0.08em" }}>
                         {albumDetails.runtime} total
                       </span>
                     </div>
@@ -1272,45 +1272,51 @@ export default function Home() {
 
           {/* ════════════ PLAYING SUB-PANEL (isPlaying) ════════════ */}
           {/*
-            Portrait (<768px):  flex-col — vinyl on top, info below
-            Landscape (≥768px): flex-row — vinyl left, info right
+            Portrait (<768px):  flex-col — vinyl on top, info below, both centered
+            Landscape (≥768px): flex-row — vinyl fills left half, info fills right half
           */}
           <div
             className="flex flex-col md:flex-row"
             style={{
               position: "absolute", inset: 0,
-              alignItems: "center", justifyContent: "center",
-              padding: "max(env(safe-area-inset-top), 20px) 32px 16px",
-              gap: "clamp(14px, 3vw, 28px)",
               opacity:       isPlaying ? 1 : 0,
               pointerEvents: (mode === "now-playing" && isPlaying) ? "auto" : "none",
               transition:    `opacity 0.4s ${EASE}`,
             }}
           >
-            {/* Spinning vinyl disc — size governed by .vinyl-disc CSS class */}
+
+            {/* ── Vinyl column (left in landscape, top in portrait) ── */}
             <div
-              className="vinyl-disc"
-              style={{
-                flexShrink: 0, borderRadius: "50%", overflow: "hidden",
-                border: "3px solid rgba(201,168,76,0.22)",
-                boxShadow: "0 0 0 10px rgba(201,168,76,0.05), 0 30px 80px -8px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.04)",
-                animation: "vinyl-spin 4s linear infinite",
-              }}
+              className="flex items-center justify-center md:w-1/2 md:h-full"
+              style={{ flexShrink: 0, padding: "max(env(safe-area-inset-top), 20px) 20px 12px" }}
             >
-              {viewingRecord && (
-                <img
-                  src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
-                  alt={viewingRecord.title}
-                  draggable={false}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              )}
+              <div
+                className="vinyl-disc"
+                style={{
+                  flexShrink: 0, borderRadius: "50%", overflow: "hidden",
+                  border: "3px solid rgba(201,168,76,0.22)",
+                  boxShadow: "0 0 0 12px rgba(201,168,76,0.05), 0 32px 80px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.04)",
+                  animation: "vinyl-spin 4s linear infinite",
+                }}
+              >
+                {viewingRecord && (
+                  <img
+                    src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
+                    alt={viewingRecord.title}
+                    draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                )}
+              </div>
             </div>
 
-            {/* Info column: NOW PLAYING, title, artist, plays */}
+            {/* ── Info column (right in landscape, bottom in portrait) ── */}
             <div style={{
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: "clamp(8px, 1.5vh, 16px)", minWidth: 0,
+              flex: 1, display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              gap: "clamp(10px, 2vh, 20px)",
+              padding: "12px clamp(20px, 4vw, 48px) 20px",
+              minWidth: 0,
             }}>
               {/* NOW PLAYING label + waveform */}
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "nowrap" }}>
@@ -1337,9 +1343,9 @@ export default function Home() {
                 className="line-clamp-2"
                 style={{
                   fontFamily: "var(--font-playfair)", fontWeight: 900,
-                  fontSize:   "clamp(0.95rem, 3.5vw, 1.4rem)",
+                  fontSize:   "clamp(1rem, 3.5vw, 1.6rem)",
                   lineHeight: 1.2, color: "#f5f0e8",
-                  textAlign:  "center", maxWidth: "70vw",
+                  textAlign:  "center",
                 }}
               >
                 {viewingRecord?.title ?? ""}
@@ -1347,8 +1353,8 @@ export default function Home() {
 
               {/* Artist */}
               <p style={{
-                fontFamily: "var(--font-mono)", fontSize: "clamp(0.55rem, 1.5vw, 0.68rem)",
-                color: "#5a4828", letterSpacing: "0.1em", textAlign: "center",
+                fontFamily: "var(--font-mono)", fontSize: "clamp(0.58rem, 1.5vw, 0.72rem)",
+                color: "#9a8055", letterSpacing: "0.1em", textAlign: "center",
               }}>
                 {viewingRecord?.artist?.toUpperCase() ?? ""}
               </p>
@@ -1356,14 +1362,14 @@ export default function Home() {
               {/* Play count pill */}
               <div style={{
                 display: "flex", alignItems: "center", gap: 8,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 999, padding: "7px 18px",
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 999, padding: "8px 20px",
               }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.1rem", fontWeight: 700, color: "#f5f0e8" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "1.2rem", fontWeight: 700, color: "#f5f0e8" }}>
                   {npPlayData?.play_count ?? 0}
                 </span>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.58rem", color: "#4a3820", letterSpacing: "0.08em" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#8a7050", letterSpacing: "0.08em" }}>
                   {(npPlayData?.play_count ?? 0) === 1 ? "PLAY" : "PLAYS"}
                 </span>
               </div>
@@ -1386,7 +1392,7 @@ export default function Home() {
             onClick={exitNowPlaying}
             style={{
               display: "flex", alignItems: "center", gap: 8,
-              color: "#4a3820", background: "transparent",
+              color: "#a09070", background: "transparent",
               border: "none", cursor: "pointer",
               padding: "6px 12px 6px 0", transition: "color 0.2s",
             }}
@@ -1403,8 +1409,8 @@ export default function Home() {
                 onClick={stopPlaying}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  color: "#7a5a2a", background: "transparent",
-                  border: "1px solid rgba(201,168,76,0.18)",
+                  color: "#b08030", background: "transparent",
+                  border: "1px solid rgba(201,168,76,0.3)",
                   borderRadius: 8, cursor: "pointer", padding: "5px 10px",
                   transition: "color 0.2s, border-color 0.2s",
                   fontFamily: "var(--font-mono)", fontSize: "0.6rem", letterSpacing: "0.08em",
@@ -1419,7 +1425,7 @@ export default function Home() {
               disabled={syncing}
               aria-label="Sync collection"
               style={{
-                padding: "6px", color: "#3a2c14", background: "transparent",
+                padding: "6px", color: "#7a6240", background: "transparent",
                 border: "none", cursor: "pointer", opacity: syncing ? 0.4 : 1,
                 transition: "color 0.2s",
               }}
@@ -1495,13 +1501,13 @@ export default function Home() {
                 </p>
                 <p className="line-clamp-1" style={{
                   fontFamily: "var(--font-mono)", fontSize: "0.58rem",
-                  color: "#5a4828", marginTop: 3, letterSpacing: "0.07em",
+                  color: "#9a8055", marginTop: 3, letterSpacing: "0.07em",
                 }}>
                   {nowPlayingRec.artist.toUpperCase()}
                 </p>
               </>
             ) : (
-              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#2a1f10", letterSpacing: "0.12em" }}>
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", color: "#6a5530", letterSpacing: "0.12em" }}>
                 TAP A RECORD TO BEGIN
               </p>
             )}
