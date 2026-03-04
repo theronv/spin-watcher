@@ -121,6 +121,7 @@ function VinylPlaceholder() {
 interface AlbumCardProps {
   record:      RecordData;
   width:       number;
+  artHeight:   number;
   globalIndex: number;
   isNowPlay:   boolean;
   playData:    PlayData | undefined;
@@ -136,7 +137,7 @@ interface AlbumCardProps {
 }
 
 const AlbumCard = React.memo(function AlbumCard({
-  record, width, globalIndex,
+  record, width, artHeight, globalIndex,
   isNowPlay, playData, isEditing, imgError, editValue,
   onOpen, onOpenEditor, onSaveEdit, onCancelEdit, onEditValueChange, onImgError,
 }: AlbumCardProps) {
@@ -155,11 +156,11 @@ const AlbumCard = React.memo(function AlbumCard({
       }}
       onClick={() => { if (!isEditing) onOpen(record); }}
     >
-      {/* Square image wrapper */}
+      {/* Art wrapper — full column width, height capped by artHeight */}
       <div
         className="album-art-wrap"
         style={{
-          position: "relative", width, height: width,
+          position: "relative", width, height: artHeight,
           borderRadius: 10, overflow: "hidden",
           border: isNowPlay
             ? "1.5px solid rgba(201,168,76,0.6)"
@@ -456,12 +457,18 @@ export default function Home() {
   );
 
   // ── Grid layout ───────────────────────────────────────────────────────────
-
-  const colCount  = containerDims.w < 768 ? 2 : containerDims.w < 1024 ? 3 : 4;
+  // Breakpoints: narrow → 2 cols, tablet/iPad portrait → 3 cols, iPad landscape → 3 cols, large → 4 cols
+  const colCount  = containerDims.w < 600 ? 2 : containerDims.w < 1200 ? 3 : 4;
   const cardWidth = containerDims.w > 0
     ? Math.floor((containerDims.w - PAD * 2 - HGAP * (colCount - 1)) / colCount)
     : 150;
-  const rowHeight = cardWidth + TEXT_HEIGHT;
+  // Cap art height so at least 2.2 rows are visible above the fold.
+  // On portrait (tall viewports) this equals cardWidth (square art).
+  // On landscape (short viewports) this shrinks the art to keep 2+ rows in view.
+  const listHeight   = containerDims.h > 0 ? containerDims.h - NP_BAR_HEIGHT : 0;
+  const maxArtHeight = listHeight > 0 ? Math.floor(listHeight / 2.2) - TEXT_HEIGHT : cardWidth;
+  const artHeight    = containerDims.w > 0 ? Math.min(cardWidth, Math.max(80, maxArtHeight)) : cardWidth;
+  const rowHeight    = artHeight + TEXT_HEIGHT;
 
   const rows = useMemo(() => {
     const result: RecordData[][] = [];
@@ -729,7 +736,7 @@ export default function Home() {
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ flexShrink: 0, padding: "max(env(safe-area-inset-top), 14px) 18px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 8 }}>
 
             {/* Logotype */}
             <h1 style={{
@@ -808,7 +815,7 @@ export default function Home() {
           </div>
 
           {/* ── Search ─────────────────────────────────────────────────── */}
-          <div style={{ paddingBottom: 10 }}>
+          <div style={{ paddingBottom: 6 }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 8,
               background: "rgba(255,255,255,0.03)",
@@ -837,7 +844,7 @@ export default function Home() {
           </div>
 
           {/* ── Sort pills ─────────────────────────────────────────────── */}
-          <div className="scrollbar-hide" style={{ display: "flex", gap: 6, paddingBottom: 10, overflowX: "auto" }}>
+          <div className="scrollbar-hide" style={{ display: "flex", gap: 6, paddingBottom: 6, overflowX: "auto" }}>
             {SORT_OPTIONS.map(opt => {
               const active = sort === opt.key;
               return (
@@ -862,7 +869,7 @@ export default function Home() {
 
           {/* ── Genre filter pills ─────────────────────────────────────── */}
           {allGenres.length > 0 && (
-            <div className="scrollbar-hide" style={{ display: "flex", gap: 6, paddingBottom: 12, overflowX: "auto" }}>
+            <div className="scrollbar-hide" style={{ display: "flex", gap: 6, paddingBottom: 8, overflowX: "auto" }}>
               {allGenres.map(genre => {
                 const active = selectedGenres.has(genre);
                 return (
@@ -938,6 +945,7 @@ export default function Home() {
                         key={record.discogs_id}
                         record={record}
                         width={cardWidth}
+                        artHeight={artHeight}
                         globalIndex={globalIndex}
                         isNowPlay={record.discogs_id === nowPlayingId}
                         playData={plays[record.discogs_id]}
