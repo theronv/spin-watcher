@@ -1198,7 +1198,10 @@ export default function Home() {
             {/* ── RIGHT COLUMN: Mark as Playing (landscape) + scrollable tracklist ── */}
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
 
-              {/* Mark as Playing — landscape only, pinned above tracklist */}
+              {/* Top centering spacer — landscape only */}
+              <div className="hidden md:block" style={{ flex: 1 }} />
+
+              {/* Mark as Playing — landscape only, above tracklist */}
               <button
                 className="hidden md:flex items-center justify-center"
                 onClick={() => viewingRecord && markPlaying(viewingRecord.discogs_id)}
@@ -1220,7 +1223,7 @@ export default function Home() {
               {/* Scrollable tracklist */}
               <div
                 className="scrollbar-hide"
-                style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "18px 22px 28px" }}
+                style={{ overflowY: "auto", padding: "18px 22px 28px" }}
               >
               {albumLoading ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1266,6 +1269,10 @@ export default function Home() {
                 </div>
               ) : null}
               </div>{/* end scrollable tracklist */}
+
+              {/* Bottom centering spacer — landscape only */}
+              <div className="hidden md:block" style={{ flex: 1 }} />
+
             </div>{/* end right column */}
 
           </div>
