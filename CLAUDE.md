@@ -71,7 +71,7 @@ All must be set in Vercel project settings for production. `.env.local` for loca
 ```
 src/
   app/
-    page.tsx                    — entire SPA (~1,450 lines)
+    page.tsx                    — entire SPA (~1,700 lines)
     layout.tsx                  — fonts (Playfair Display, Space Mono), metadata
     globals.css                 — CSS variables, keyframes, utility classes
     api/
@@ -109,7 +109,7 @@ ios/
 |---|---|---|
 | `--background` / `#0c0a07` | Near-black | Page background, WebView background |
 | `--foreground` / `#f5f0e8` | Warm off-white | Primary text |
-| `--gold` / `#C9A84C` | Gold | CTAs, now-playing accents, waveform bars |
+| `--gold` / `#C9A84C` | Gold | CTAs, now-playing accents, waveform bars, "Drop" in logotype |
 | `--gold-dim` / `#7a6228` | Dim gold | Secondary gold use |
 | `--gold-glow` / `rgba(201,168,76,0.15)` | Gold glow | Hover shadows |
 | `--surface` / `rgba(18,14,9,0.92)` | Dark surface | Overlays, panels |
@@ -128,13 +128,15 @@ ios/
 
 **Rule:** UI text is almost always Space Mono. Playfair is only for the NeedleDrop wordmark and major headings.
 
+**Logotype:** `<span color="#f5f0e8">Needle</span><span color={GOLD}>Drop</span>` — "Needle" in off-white, "Drop" in gold.
+
 ### Spacing / Layout Constants (defined in `page.tsx`)
 
 ```typescript
 const HGAP          = 10;   // horizontal gap between grid cards
 const PAD           = 14;   // grid horizontal padding
 const TEXT_HEIGHT   = 64;   // card text area height (title + artist + genre)
-const NP_BAR_HEIGHT = 82;   // now-playing persistent bar height (subtracted from grid)
+const NP_BAR_HEIGHT = 100;  // now-playing persistent bar height (subtracted from grid)
 ```
 
 ### Grid Layout Strategy
@@ -172,7 +174,7 @@ Key keyframes in `globals.css`:
 ### Special CSS Classes (globals.css)
 - `.scrollbar-hide` — hide scrollbars cross-browser
 - `.pt-safe` / `.pb-safe` — `env(safe-area-inset-*)` aware padding
-- `.vinyl-disc` — size-only class for the Now Playing disc; orientation media queries set `clamp()` sizes (portrait: 160–260px, landscape: 200–460px)
+- `.vinyl-disc` — size-only class for the Now Playing disc; orientation media queries set `clamp()` sizes (portrait: 200–440px, landscape: 200–460px)
 - `.vinyl-spin` — CSS animation class (not used on NP disc; exists for potential other uses)
 - `.now-playing-dot` — pulsing indicator
 - `.album-card` — hover triggers child `.album-art-wrap` gold glow + `.album-art-img` scale(1.06)
@@ -207,25 +209,38 @@ authChecked=true, session set,
 - `viewingRecord` holds the record open in now-playing; `nowPlayingId` holds the *actively spinning* record — these can differ (you can view details without "playing")
 - `albumDetails` is fetched lazily when `mode === "now-playing"` and `viewingRecord` changes
 - `isScratching` is React state (drives visual gold glow); actual scratch logic uses refs only (`isScratchingRef`, `vinylRotRef`) for performance — no re-renders during drag
+- `profileOpen` controls the profile bottom sheet overlay
 
 ### Now Playing — Responsive Layout
 
-Both sub-panels (detail view and playing view) use `className="flex flex-col md:flex-row"` for portrait/landscape switching at the 768px Tailwind `md:` breakpoint.
+Both sub-panels (detail view and playing view) branch on `isLandscape` — a `const` derived from `containerDims` (`w > h * 1.1`). This correctly handles iPad portrait (≥768px wide but taller than wide, so `isLandscape = false`) unlike the old `md:` Tailwind breakpoint which triggered at 768px regardless of orientation.
 
 **Detail view** (`!isPlaying`):
-- Left column (`md:w-[44%]`): album art + title + artist + play count + genre pills + Mark as Playing button (portrait only)
-- Right column (`flex: 1`): Mark as Playing button (landscape only, `hidden md:flex`) + scrollable tracklist
-- Both columns vertically centered via `justify-center` (left) and flex spacers `hidden md:block` (right)
+
+*Landscape* — two columns:
+- Left column (44%): album art + title + artist + play count/editor + genre pills, vertically centered (`justifyContent: "center"`)
+- Right column (flex: 1): Mark as Playing button + scrollable tracklist, sandwiched by `flex: 1` spacers
+
+*Portrait* — single scrollable centered column:
+- Outer: `overflowY: auto`, inner: `minHeight: 100%`, `justifyContent: center`
+- Art (`clamp(160px, 52vw, 320px)`) → title → artist → play count/editor → year/label → genre pills → Mark as Playing (full width, maxWidth 360px) → tracklist
 
 **Playing view** (`isPlaying`):
-- Left column (`md:w-1/2 md:h-full`): spinning vinyl disc (scratch-enabled)
-- Right column (`flex: 1`): NOW PLAYING label + waveform + title + artist + play count pill
 
-**Critical:** Never add `flexDirection` or `display` to the outer container's inline `style` — it overrides Tailwind's `md:flex-row` class. Layout direction must be Tailwind-only.
+*Landscape* — two columns:
+- Left column (50%): spinning vinyl disc (scratch-enabled), centered
+- Right column (flex: 1): NOW PLAYING label + waveform + title + artist + play count pill, all centered
+
+*Portrait* — single centered column:
+- Outer: `position: absolute; inset: 0; display: flex; flexDirection: column; alignItems: center; justifyContent: center`
+- Vinyl disc (`clamp(200px, min(46vh, 58vw), 440px)`) — scales with screen
+- Info block below: NOW PLAYING + waveform, title, artist, play count
+
+**Critical:** Never add `flexDirection` or `display` to these containers' inline `style` when also using Tailwind layout classes. Use the `isLandscape` branch instead.
 
 ### Vinyl Scratch Feature
 
-The Now Playing disc uses `requestAnimationFrame` (not CSS animation) for rotation, enabling real-time scratch control.
+The Now Playing disc uses `requestAnimationFrame` (not CSS animation) for rotation, enabling real-time scratch control. **There is no audio** — scratch sound was removed.
 
 **Refs:**
 ```typescript
@@ -235,16 +250,22 @@ rafRef          // animation frame ID
 lastFrameRef    // timestamp of previous frame
 isScratchingRef // true while pointer held (ref, not state — no re-renders)
 lastPtrAngleRef // angle of last pointer event (for delta calculation)
-audioCtxRef     // Web Audio AudioContext (created once on first scratch)
-scratchGainRef  // GainNode — volume driven by angular velocity
-scratchBpRef    // BiquadFilterNode — bandpass; frequency shifts by direction
 ```
 
 **RAF loop** (effect on `isPlaying`): auto-increments `vinylRotRef` at `360°/4000ms`; skips increment when `isScratchingRef.current` is true. Writes directly to `vinylRef.current.style.transform`.
 
-**Scratch mechanics:** `setPointerCapture` keeps drag active outside the element. Delta angle handles ±180° wrap. Volume = `min(0.3, |delta| * 0.18)`. Filter frequency: 1800 Hz forward / 900 Hz backward.
+**Scratch mechanics:** `setPointerCapture` keeps drag active outside the element. Delta angle handles ±180° wrap. Visual-only — gold border glow via `isScratching` state.
 
-**Audio init:** deferred to first `pointerdown` (browsers require user gesture before creating AudioContext). AudioContext is never closed — reused across all scratches.
+### Profile Sheet
+
+Tapping the avatar in the top-right header opens a bottom sheet (`profileOpen` state, z-index 51). The sheet contains:
+- User avatar + username
+- Record count
+- Last sync timestamp (read from `localStorage.getItem('last_sync_at_{username}')`)
+- Sync Collection button (calls `syncFromDiscogs` + `fetchPlays`, then closes sheet)
+- Sign Out link (`/api/auth/logout`)
+
+The standalone sync button and "OUT" link were removed from the header — sync/sign-out live only in the profile sheet.
 
 ### Data Flow on Mount
 
@@ -256,7 +277,8 @@ scratchBpRef    // BiquadFilterNode — bandpass; frequency shifts by direction
    b. apiFetch /api/records
    c. Check localStorage 'last_sync_at_{username}'
       - if stale (>24h) or empty → apiFetch /api/sync (upserts DB, returns updated records)
-   d. apiFetch /api/plays → build plays map
+   d. apiFetch /api/plays → build plays map   ← always runs in its own try/catch,
+                                                 even if steps a–c throw
 ```
 
 ---
@@ -402,6 +424,12 @@ After editing `project.yml`, always run `xcodegen generate` — the `.xcodeproj`
 
 13. **RAF vinyl vs CSS animation** — the Now Playing disc uses a `requestAnimationFrame` loop that writes `style.transform` directly, not the `vinyl-spin` CSS animation. The `@keyframes vinyl-spin` definition and `.vinyl-spin` CSS class still exist in `globals.css` but are not applied to the disc. Do not re-add `animation: "vinyl-spin..."` to the vinyl div style — it would fight with the RAF loop.
 
-14. **Inline style vs Tailwind breakpoint classes** — inline `style={{ flexDirection }}` or `style={{ display }}` always wins over Tailwind `md:flex-row` / `hidden md:flex` because inline styles have higher CSS specificity. All responsive flex direction must live in `className`, never in `style`.
+14. **`isLandscape` is derived from `containerDims`, not window size** — `const isLandscape = containerDims.w > containerDims.h * 1.1`. This is measured from the grid container via `ResizeObserver`. Do not replace this with `window.innerWidth > window.innerHeight` or a Tailwind `md:` breakpoint — the Tailwind `md:` breakpoint (768px) triggers on iPad portrait which is ≥768px wide, causing the two-column layout to appear incorrectly. The `containerDims`-based check is portrait/landscape correct for all iPad models.
 
-15. **`viewport-fit=cover` required for safe area insets** — `layout.tsx` exports a `Viewport` with `viewportFit: "cover"`. Without this, `env(safe-area-inset-top)` returns `0` inside WKWebView when `.ignoresSafeArea()` is used in Swift, causing the header to overlap the iOS status bar.
+15. **`fetchPlays` always runs in its own try/catch** — separated from the init/records/sync block so that a sync failure (network error, Discogs API down) does not prevent plays from loading. If sync throws, plays still load from DB.
+
+16. **`viewport-fit=cover` required for safe area insets** — `layout.tsx` exports a `Viewport` with `viewportFit: "cover"`. Without this, `env(safe-area-inset-top)` returns `0` inside WKWebView when `.ignoresSafeArea()` is used in Swift, causing the header to overlap the iOS status bar.
+
+17. **Scratch sound removed** — Web Audio API code (`audioCtxRef`, `scratchGainRef`, `scratchBpRef`, `initScratchAudio`) was intentionally removed. The vinyl scratch is visual-only. Do not re-add audio to scratch interactions.
+
+18. **Profile sheet reads localStorage directly** — the last-sync timestamp displayed in the profile sheet is read inline from `localStorage.getItem('last_sync_at_{username}')` at render time (no state). This is fine since it's `"use client"` and only needs to be accurate when the sheet opens.
