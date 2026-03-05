@@ -317,9 +317,6 @@ export default function Home() {
   const lastFrameRef     = useRef(0);
   const isScratchingRef  = useRef(false);
   const lastPtrAngleRef  = useRef(0);
-  const audioCtxRef      = useRef<AudioContext | null>(null);
-  const scratchGainRef   = useRef<GainNode | null>(null);
-  const scratchBpRef     = useRef<BiquadFilterNode | null>(null);
   const [isScratching,   setIsScratching] = useState(false);
 
   // ── Grid container measurement (for react-window) ─────────────────────────
@@ -413,9 +410,14 @@ export default function Home() {
           await syncFromDiscogs();
           localStorage.setItem(`last_sync_at_${sess.username}`, String(Date.now()));
         }
-        await fetchPlays();
       } catch (err) {
         console.error("Boot failed", err);
+      }
+      // Always load plays — runs even if init/records/sync above threw an error.
+      try {
+        await fetchPlays();
+      } catch (err) {
+        console.error("fetchPlays failed", err);
       } finally {
         setLoading(false);
       }
@@ -565,37 +567,13 @@ export default function Home() {
     return Math.atan2(e.clientY - (top + height / 2), e.clientX - (left + width / 2)) * (180 / Math.PI);
   }, []);
 
-  const initScratchAudio = useCallback(() => {
-    if (audioCtxRef.current) return;
-    try {
-      const Ctx = (window.AudioContext ?? (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
-      const ctx = new Ctx();
-      // 2-second looping white-noise buffer
-      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-      const src = ctx.createBufferSource();
-      src.buffer = buf; src.loop = true;
-      // Bandpass gives that vinyl-scratch timbre
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 1.8;
-      const gain = ctx.createGain(); gain.gain.value = 0;
-      src.connect(bp); bp.connect(gain); gain.connect(ctx.destination);
-      src.start();
-      audioCtxRef.current = ctx;
-      scratchGainRef.current = gain;
-      scratchBpRef.current = bp;
-    } catch { /* audio not supported */ }
-  }, []);
-
   const handleVinylDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     isScratchingRef.current = true;
     setIsScratching(true);
     lastPtrAngleRef.current = getPtrAngle(e);
-    initScratchAudio();
-  }, [getPtrAngle, initScratchAudio]);
+  }, [getPtrAngle]);
 
   const handleVinylMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isScratchingRef.current) return;
@@ -605,20 +583,11 @@ export default function Home() {
     if (delta < -180) delta += 360;
     lastPtrAngleRef.current = newAngle;
     vinylRotRef.current += delta;
-    // Modulate audio: volume ∝ speed, filter pitch ∝ direction
-    if (audioCtxRef.current && scratchGainRef.current && scratchBpRef.current) {
-      const t = audioCtxRef.current.currentTime;
-      scratchGainRef.current.gain.setTargetAtTime(Math.min(0.3, Math.abs(delta) * 0.18), t, 0.02);
-      scratchBpRef.current.frequency.setTargetAtTime(delta >= 0 ? 1800 : 900, t, 0.04);
-    }
   }, [getPtrAngle]);
 
   const handleVinylUp = useCallback((_e: React.PointerEvent<HTMLDivElement>) => {
     isScratchingRef.current = false;
     setIsScratching(false);
-    if (scratchGainRef.current && audioCtxRef.current) {
-      scratchGainRef.current.gain.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.12);
-    }
   }, []);
 
   // ── Play logging ───────────────────────────────────────────────────────────
@@ -1395,8 +1364,8 @@ export default function Home() {
 
             {/* ── Vinyl column (left in landscape, top in portrait) ── */}
             <div
-              className="flex items-center justify-center md:w-1/2 md:h-full"
-              style={{ flexShrink: 0, padding: "max(env(safe-area-inset-top), 20px) 20px 12px" }}
+              className="flex-1 flex items-center justify-center md:flex-none md:w-1/2 md:h-full"
+              style={{ padding: "max(env(safe-area-inset-top), 20px) 20px 12px" }}
             >
               <div
                 ref={vinylRef}
