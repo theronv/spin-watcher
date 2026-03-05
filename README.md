@@ -9,11 +9,13 @@ Live at **[needle-drop.com](https://needle-drop.com)**
 ## What it does
 
 - **OAuth login** — connect your Discogs account once; NeedleDrop syncs your full collection automatically
-- **Virtualized grid** — renders hundreds of records without slowing down, sorted and filtered client-side
+- **Virtualized grid** — renders hundreds of records without slowing down, sorted and filtered client-side; adapts to portrait (2–4 column) and landscape (height-driven rows) layouts
 - **Genre / sort filters** — filter by genre pill, sort by date added, artist, year, play count, and more
-- **Now Playing** — tap a record to view tracklist, runtime, and label info; mark it as playing and watch the waveform
-- **Play tracking** — play counts and last-played timestamps stored in a persistent database
+- **Album detail view** — tap a record to view tracklist, runtime, year, label, and genre metadata in a responsive two-column layout
+- **Now Playing** — mark a record as playing; watch the vinyl disc spin with a waveform animation. Grab and spin the record with your finger for a DJ-style scratch effect (with Web Audio scratch sound)
+- **Play tracking** — play counts and last-played timestamps stored in a persistent database; inline editor to correct counts
 - **Auto-sync** — re-fetches from Discogs if your last sync was more than 24 hours ago
+- **iOS companion app** — SwiftUI WKWebView shell for iPad (iOS 17+); supports OAuth login via deep link and all app features natively
 
 ---
 
@@ -22,10 +24,13 @@ Live at **[needle-drop.com](https://needle-drop.com)**
 | Layer | Technology |
 |---|---|
 | Framework | Next.js 16 (App Router, Turbopack) |
-| UI | React 19, Tailwind CSS v4, CSS-only animations |
+| UI | React 19, Tailwind CSS v4, inline styles, `requestAnimationFrame` animations |
 | Database | [Turso](https://turso.tech) (libSQL / SQLite at the edge) |
-| Auth | Discogs OAuth 1.0a via `oauth-1.0a` |
+| Auth | Discogs OAuth 1.0a via `oauth-1.0a`; HMAC-SHA256 Bearer tokens for mobile |
 | Images | In-app proxy (`/api/image`) using `sharp` |
+| Grid | `react-window` FixedSizeList (virtualized) |
+| Audio | Web Audio API (vinyl scratch sound) |
+| iOS | SwiftUI + WKWebView, iOS 17+, iPad-first |
 | Deployment | Vercel |
 
 ---
@@ -88,7 +93,8 @@ Open [http://localhost:3000](http://localhost:3000). Log in with Discogs and you
 | `DISCOGS_CONSUMER_KEY` | Yes | OAuth consumer key from Discogs developer settings |
 | `DISCOGS_CONSUMER_SECRET` | Yes | OAuth consumer secret from Discogs developer settings |
 | `TURSO_AUTH_TOKEN` | Yes | Auth token for your Turso database |
-| `DISCOGS_TOKEN` | No | Personal access token — enables sync without OAuth (demo/fallback mode) |
+| `SESSION_SECRET` | Yes | HMAC-SHA256 key for mobile Bearer tokens — generate with `openssl rand -hex 32` |
+| `DISCOGS_TOKEN` | No | Personal access token — enables `/api/album/[id]` tracklist fetches and demo/fallback mode |
 | `DISCOGS_USER` | No | Discogs username — required if using `DISCOGS_TOKEN` fallback |
 
 See `.env.example` for a copy-paste template.

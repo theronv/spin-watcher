@@ -29,7 +29,7 @@ Web app (Next.js on Vercel) + iPad companion app (SwiftUI WebView shell).
 ## Critical Architecture Decisions
 
 ### 1. Single-file SPA
-`src/app/page.tsx` (~1,450 lines) is intentionally one file. All browse, now-playing, state, and data fetching live here. **Do not split into multiple components without a strong reason** — the coupling is deliberate for a small app.
+`src/app/page.tsx` (~1,700 lines) is intentionally one file. All browse, now-playing, state, and data fetching live here. **Do not split into multiple components without a strong reason** — the coupling is deliberate for a small app.
 
 ### 2. Play counts as event rows, not a counter column
 `plays` table stores one row per play event. Counts are `COUNT(*)`, last played is `MAX(played_at)`. This is intentional — preserves history and gives accurate timestamps. Don't refactor to a counter column.
@@ -113,9 +113,10 @@ ios/
 | `--gold-dim` / `#7a6228` | Dim gold | Secondary gold use |
 | `--gold-glow` / `rgba(201,168,76,0.15)` | Gold glow | Hover shadows |
 | `--surface` / `rgba(18,14,9,0.92)` | Dark surface | Overlays, panels |
-| `#3a2c14` | Dark brown-gold | Muted text, borders |
-| `#5a4828` | Mid brown-gold | Secondary text |
-| `#2a1f10` | Very dark brown | Tertiary text, placeholders |
+| `#9a8055` | Warm tan | Artist names, year/label text |
+| `#8a7050` | Muted gold-brown | Secondary labels (PLAYS, EDIT, style pills) |
+| `#7a6240` | Dim brown | Tertiary UI (search icon, track positions, runtime, sync icons) |
+| `#6a5530` | Very dim | Placeholder text ("TAP A RECORD TO BEGIN") |
 | `rgba(255,255,255,0.06)` | — | Default card border |
 
 ### Typography
@@ -136,11 +137,22 @@ const TEXT_HEIGHT   = 64;   // card text area height (title + artist + genre)
 const NP_BAR_HEIGHT = 82;   // now-playing persistent bar height (subtracted from grid)
 ```
 
-### Grid Columns (breakpoints)
-- 2 cols on mobile (`< sm`)
-- 3 cols on tablet (`sm–lg`)
-- 4 cols on desktop (`>= lg`)
-- Measured via `ResizeObserver` on the grid container, not CSS media queries (required for react-window)
+### Grid Layout Strategy
+
+Grid dimensions are measured via `ResizeObserver` on the grid container (`containerDims`), not CSS media queries — required for `react-window`.
+
+**Portrait** (width-driven):
+- Columns: 2 (`< 600px`), 3 (`600–1199px`), 4 (`≥ 1200px`)
+- `cardWidth` = `(containerWidth - PAD*2 - HGAP*(cols-1)) / cols`
+- `artHeight = cardWidth` (square art)
+
+**Landscape** (`containerWidth > containerHeight * 1.1`, height-driven):
+- `targetRows` = 1 (small screens, height < 320px) or 2 (iPad)
+- `artHeight` = `(listHeight - HGAP*(rows-1)) / rows - TEXT_HEIGHT`
+- `colCount` = how many square cards fit across
+- Rows are center-justified (`justifyContent: "center"`)
+
+This ensures art is never cropped and fills the visible space proportionally.
 
 ### Animation Constants
 
@@ -151,7 +163,7 @@ const WAVE_DURATIONS = [0.7, 0.5, 0.9, 0.6, 0.8, 0.55, 0.75, 0.95, 0.6, 0.85, 0.
 
 Key keyframes in `globals.css`:
 - `card-enter` — 0.2s staggered entrance (15ms per card, max 250ms)
-- `vinyl-spin` — 2.4s linear infinite rotation
+- `vinyl-spin` — keyframe definition only (the CSS `.vinyl-spin` class is NOT used on the Now Playing disc — RAF drives it directly)
 - `pulse-dot` — 1.4s now-playing dot pulse
 - `waveform-bar` — 0.85s base, per-bar durations from `WAVE_DURATIONS`
 - `skeleton-pulse` — 1.6s loading skeleton
@@ -160,7 +172,8 @@ Key keyframes in `globals.css`:
 ### Special CSS Classes (globals.css)
 - `.scrollbar-hide` — hide scrollbars cross-browser
 - `.pt-safe` / `.pb-safe` — `env(safe-area-inset-*)` aware padding
-- `.vinyl-spin` — spinning record
+- `.vinyl-disc` — size-only class for the Now Playing disc; orientation media queries set `clamp()` sizes (portrait: 160–260px, landscape: 200–460px)
+- `.vinyl-spin` — CSS animation class (not used on NP disc; exists for potential other uses)
 - `.now-playing-dot` — pulsing indicator
 - `.album-card` — hover triggers child `.album-art-wrap` gold glow + `.album-art-img` scale(1.06)
 - `.album-hover-play` — play icon overlay, visible on hover
@@ -193,6 +206,45 @@ authChecked=true, session set,
 - `editingId` being set prevents card click-through (check `isEditing` before calling `onOpen`)
 - `viewingRecord` holds the record open in now-playing; `nowPlayingId` holds the *actively spinning* record — these can differ (you can view details without "playing")
 - `albumDetails` is fetched lazily when `mode === "now-playing"` and `viewingRecord` changes
+- `isScratching` is React state (drives visual gold glow); actual scratch logic uses refs only (`isScratchingRef`, `vinylRotRef`) for performance — no re-renders during drag
+
+### Now Playing — Responsive Layout
+
+Both sub-panels (detail view and playing view) use `className="flex flex-col md:flex-row"` for portrait/landscape switching at the 768px Tailwind `md:` breakpoint.
+
+**Detail view** (`!isPlaying`):
+- Left column (`md:w-[44%]`): album art + title + artist + play count + genre pills + Mark as Playing button (portrait only)
+- Right column (`flex: 1`): Mark as Playing button (landscape only, `hidden md:flex`) + scrollable tracklist
+- Both columns vertically centered via `justify-center` (left) and flex spacers `hidden md:block` (right)
+
+**Playing view** (`isPlaying`):
+- Left column (`md:w-1/2 md:h-full`): spinning vinyl disc (scratch-enabled)
+- Right column (`flex: 1`): NOW PLAYING label + waveform + title + artist + play count pill
+
+**Critical:** Never add `flexDirection` or `display` to the outer container's inline `style` — it overrides Tailwind's `md:flex-row` class. Layout direction must be Tailwind-only.
+
+### Vinyl Scratch Feature
+
+The Now Playing disc uses `requestAnimationFrame` (not CSS animation) for rotation, enabling real-time scratch control.
+
+**Refs:**
+```typescript
+vinylRef        // HTMLDivElement — RAF writes transform directly
+vinylRotRef     // current rotation in degrees
+rafRef          // animation frame ID
+lastFrameRef    // timestamp of previous frame
+isScratchingRef // true while pointer held (ref, not state — no re-renders)
+lastPtrAngleRef // angle of last pointer event (for delta calculation)
+audioCtxRef     // Web Audio AudioContext (created once on first scratch)
+scratchGainRef  // GainNode — volume driven by angular velocity
+scratchBpRef    // BiquadFilterNode — bandpass; frequency shifts by direction
+```
+
+**RAF loop** (effect on `isPlaying`): auto-increments `vinylRotRef` at `360°/4000ms`; skips increment when `isScratchingRef.current` is true. Writes directly to `vinylRef.current.style.transform`.
+
+**Scratch mechanics:** `setPointerCapture` keeps drag active outside the element. Delta angle handles ±180° wrap. Volume = `min(0.3, |delta| * 0.18)`. Filter frequency: 1800 Hz forward / 900 Hz backward.
+
+**Audio init:** deferred to first `pointerdown` (browsers require user gesture before creating AudioContext). AudioContext is never closed — reused across all scratches.
 
 ### Data Flow on Mount
 
@@ -347,3 +399,9 @@ After editing `project.yml`, always run `xcodegen generate` — the `.xcodeproj`
 11. **Discogs OAuth uses `sameSite: 'lax'`** — the session cookie uses `lax` (not `strict`) because the OAuth callback is a cross-origin redirect. `strict` would drop the cookie on the Discogs → NeedleDrop redirect.
 
 12. **`init/route.ts` runs on every load** — it's called immediately after auth on every page mount. It's idempotent (uses `IF NOT EXISTS` and tries column adds safely), so this is fine, but it does add a round-trip to every cold start.
+
+13. **RAF vinyl vs CSS animation** — the Now Playing disc uses a `requestAnimationFrame` loop that writes `style.transform` directly, not the `vinyl-spin` CSS animation. The `@keyframes vinyl-spin` definition and `.vinyl-spin` CSS class still exist in `globals.css` but are not applied to the disc. Do not re-add `animation: "vinyl-spin..."` to the vinyl div style — it would fight with the RAF loop.
+
+14. **Inline style vs Tailwind breakpoint classes** — inline `style={{ flexDirection }}` or `style={{ display }}` always wins over Tailwind `md:flex-row` / `hidden md:flex` because inline styles have higher CSS specificity. All responsive flex direction must live in `className`, never in `style`.
+
+15. **`viewport-fit=cover` required for safe area insets** — `layout.tsx` exports a `Viewport` with `viewportFit: "cover"`. Without this, `env(safe-area-inset-top)` returns `0` inside WKWebView when `.ignoresSafeArea()` is used in Swift, causing the header to overlap the iOS status bar.
