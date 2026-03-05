@@ -136,9 +136,9 @@ body::after {
 
 /* ── Now-playing vinyl disc (responsive by orientation) ──────────────────── */
 .vinyl-disc {
-  /* Portrait / tall viewports */
-  width:  clamp(160px, min(44vh, 55vw), 260px);
-  height: clamp(160px, min(44vh, 55vw), 260px);
+  /* Portrait — scales with both viewport dimensions, generous max for iPad */
+  width:  clamp(200px, min(46vh, 58vw), 440px);
+  height: clamp(200px, min(46vh, 58vw), 440px);
 }
 @media (orientation: landscape) {
   .vinyl-disc {
