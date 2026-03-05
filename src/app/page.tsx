@@ -1086,7 +1086,7 @@ export default function Home() {
                   className="scrollbar-hide"
                   style={{
                     width: "44%", flexShrink: 0, overflowY: "auto",
-                    display: "flex", flexDirection: "column", alignItems: "center",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     gap: 14,
                     padding: "max(env(safe-area-inset-top), 16px) 22px 22px",
                     borderRight: "1px solid rgba(255,255,255,0.05)",
