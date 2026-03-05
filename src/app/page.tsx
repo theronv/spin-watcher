@@ -310,6 +310,18 @@ export default function Home() {
   const [albumLoading, setAlbumLoading] = useState(false);
   const [isPlaying,    setIsPlaying]    = useState(false);
 
+  // ── Vinyl scratch ──────────────────────────────────────────────────────────
+  const vinylRef         = useRef<HTMLDivElement>(null);
+  const vinylRotRef      = useRef(0);          // live rotation °
+  const rafRef           = useRef<number | null>(null);
+  const lastFrameRef     = useRef(0);
+  const isScratchingRef  = useRef(false);
+  const lastPtrAngleRef  = useRef(0);
+  const audioCtxRef      = useRef<AudioContext | null>(null);
+  const scratchGainRef   = useRef<GainNode | null>(null);
+  const scratchBpRef     = useRef<BiquadFilterNode | null>(null);
+  const [isScratching,   setIsScratching] = useState(false);
+
   // ── Grid container measurement (for react-window) ─────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [containerDims, setContainerDims] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -519,6 +531,95 @@ export default function Home() {
       .finally(() => { if (!cancelled) setAlbumLoading(false); });
     return () => { cancelled = true; };
   }, [mode, viewingRecord]);
+
+  // ── Vinyl RAF spin (replaces CSS animation; enables scratch control) ────────
+
+  useEffect(() => {
+    const RATE = 360 / 4000; // °/ms — one full rotation per 4 s
+    const tick = (now: number) => {
+      const dt = lastFrameRef.current ? now - lastFrameRef.current : 0;
+      lastFrameRef.current = now;
+      if (!isScratchingRef.current) {
+        vinylRotRef.current = (vinylRotRef.current + dt * RATE) % 360;
+      }
+      if (vinylRef.current) {
+        vinylRef.current.style.transform = `rotate(${vinylRotRef.current}deg)`;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    if (isPlaying) {
+      lastFrameRef.current = 0;
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
+  }, [isPlaying]);
+
+  // ── Scratch helpers ────────────────────────────────────────────────────────
+
+  const getPtrAngle = useCallback((e: React.PointerEvent) => {
+    if (!vinylRef.current) return 0;
+    const { left, top, width, height } = vinylRef.current.getBoundingClientRect();
+    return Math.atan2(e.clientY - (top + height / 2), e.clientX - (left + width / 2)) * (180 / Math.PI);
+  }, []);
+
+  const initScratchAudio = useCallback(() => {
+    if (audioCtxRef.current) return;
+    try {
+      const Ctx = (window.AudioContext ?? (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
+      const ctx = new Ctx();
+      // 2-second looping white-noise buffer
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      // Bandpass gives that vinyl-scratch timbre
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 1.8;
+      const gain = ctx.createGain(); gain.gain.value = 0;
+      src.connect(bp); bp.connect(gain); gain.connect(ctx.destination);
+      src.start();
+      audioCtxRef.current = ctx;
+      scratchGainRef.current = gain;
+      scratchBpRef.current = bp;
+    } catch { /* audio not supported */ }
+  }, []);
+
+  const handleVinylDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isScratchingRef.current = true;
+    setIsScratching(true);
+    lastPtrAngleRef.current = getPtrAngle(e);
+    initScratchAudio();
+  }, [getPtrAngle, initScratchAudio]);
+
+  const handleVinylMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScratchingRef.current) return;
+    const newAngle = getPtrAngle(e);
+    let delta = newAngle - lastPtrAngleRef.current;
+    if (delta >  180) delta -= 360;
+    if (delta < -180) delta += 360;
+    lastPtrAngleRef.current = newAngle;
+    vinylRotRef.current += delta;
+    // Modulate audio: volume ∝ speed, filter pitch ∝ direction
+    if (audioCtxRef.current && scratchGainRef.current && scratchBpRef.current) {
+      const t = audioCtxRef.current.currentTime;
+      scratchGainRef.current.gain.setTargetAtTime(Math.min(0.3, Math.abs(delta) * 0.18), t, 0.02);
+      scratchBpRef.current.frequency.setTargetAtTime(delta >= 0 ? 1800 : 900, t, 0.04);
+    }
+  }, [getPtrAngle]);
+
+  const handleVinylUp = useCallback((_e: React.PointerEvent<HTMLDivElement>) => {
+    isScratchingRef.current = false;
+    setIsScratching(false);
+    if (scratchGainRef.current && audioCtxRef.current) {
+      scratchGainRef.current.gain.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.12);
+    }
+  }, []);
 
   // ── Play logging ───────────────────────────────────────────────────────────
 
@@ -1298,12 +1399,25 @@ export default function Home() {
               style={{ flexShrink: 0, padding: "max(env(safe-area-inset-top), 20px) 20px 12px" }}
             >
               <div
+                ref={vinylRef}
                 className="vinyl-disc"
+                onPointerDown={handleVinylDown}
+                onPointerMove={handleVinylMove}
+                onPointerUp={handleVinylUp}
+                onPointerCancel={handleVinylUp}
                 style={{
                   flexShrink: 0, borderRadius: "50%", overflow: "hidden",
-                  border: "3px solid rgba(201,168,76,0.22)",
-                  boxShadow: "0 0 0 12px rgba(201,168,76,0.05), 0 32px 80px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.04)",
-                  animation: "vinyl-spin 4s linear infinite",
+                  border: isScratching
+                    ? "3px solid rgba(201,168,76,0.6)"
+                    : "3px solid rgba(201,168,76,0.22)",
+                  boxShadow: isScratching
+                    ? "0 0 0 18px rgba(201,168,76,0.1), 0 0 48px 10px rgba(201,168,76,0.18), 0 32px 80px -8px rgba(0,0,0,0.95)"
+                    : "0 0 0 12px rgba(201,168,76,0.05), 0 32px 80px -8px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.04)",
+                  cursor: isScratching ? "grabbing" : "grab",
+                  touchAction: "none",
+                  userSelect: "none",
+                  willChange: "transform",
+                  transition: "border-color 0.15s, box-shadow 0.15s",
                 }}
               >
                 {viewingRecord && (
@@ -1311,7 +1425,7 @@ export default function Home() {
                     src={`/api/image?url=${encodeURIComponent(viewingRecord.cover_url)}&size=600`}
                     alt={viewingRecord.title}
                     draggable={false}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
                   />
                 )}
               </div>
