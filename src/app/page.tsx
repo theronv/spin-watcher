@@ -1671,34 +1671,6 @@ export default function Home() {
                   </p>
                 </div>
               </button>
-
-              {/* Sign out */}
-              <button
-                onClick={() => {
-                  // Set the logout flag before clearing the token so the mount effect
-                  // on the next load can detect that logout was intentional and skip
-                  // the env-var-fallback session check (mobile/WebView only).
-                  localStorage.setItem('nd_logged_out', '1');
-                  localStorage.removeItem('nd_bearer_token');
-                  window.location.href = '/api/auth/logout';
-                }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 14, padding: "14px 18px",
-                  cursor: "pointer", width: "100%", textAlign: "left",
-                }}
-              >
-                <span style={{ color: "#9a8055", fontSize: 16, lineHeight: 1 }}>↩</span>
-                <div style={{ textAlign: "left" }}>
-                  <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.68rem", fontWeight: 700, color: "#9a8055", letterSpacing: "0.08em" }}>
-                    SIGN OUT
-                  </p>
-                  <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.55rem", color: "#7a6240", marginTop: 2, letterSpacing: "0.04em" }}>
-                    Discogs account
-                  </p>
-                </div>
-              </button>
             </div>
           </div>
         </>
