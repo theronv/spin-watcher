@@ -84,7 +84,8 @@ function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Res
   if (token) {
     init = { ...init, headers: { ...(init.headers as Record<string, string>), Authorization: `Bearer ${token}` } };
   }
-  return fetch(input, init);
+  // Always bypass browser cache — all routes use force-dynamic but belt-and-suspenders.
+  return fetch(input, { cache: 'no-store', ...init });
 }
 
 function parseRecords(raw: unknown[]): RecordData[] {
@@ -355,12 +356,17 @@ export default function Home() {
     setSyncing(true);
     try {
       const res = await apiFetch("/api/sync");
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.error("Sync failed:", res.status, await res.text().catch(() => ""));
+        return;
+      }
       const data = await res.json();
       if (Array.isArray(data)) {
         setRecords(parseRecords(data));
         if (username) localStorage.setItem(`last_sync_at_${username}`, String(Date.now()));
       }
+    } catch (err) {
+      console.error("Sync error:", err);
     } finally {
       setSyncing(false);
     }
@@ -373,9 +379,21 @@ export default function Home() {
       const urlToken = urlParams.get('nd_token');
       if (urlToken) {
         localStorage.setItem('nd_bearer_token', urlToken);
+        localStorage.removeItem('nd_logged_out');
         const clean = new URL(window.location.href);
         clean.searchParams.delete('nd_token');
         window.history.replaceState({}, '', clean.toString());
+      }
+
+      // On iOS WebView: if the user explicitly logged out, skip the session check entirely.
+      // Mobile auth is Bearer-token-only (no discogs_session cookie), so after logout the
+      // server-side env-var fallback (DISCOGS_TOKEN/DISCOGS_USER) would otherwise re-authenticate
+      // the user. Scoped to WKWebView only so web re-login via Discogs cookie still works.
+      const isWebView = !!(window as { webkit?: unknown }).webkit;
+      if (!urlToken && isWebView && localStorage.getItem('nd_logged_out')) {
+        setAuthChecked(true);
+        setLoading(false);
+        return;
       }
 
       // 1. Check auth session
@@ -385,6 +403,7 @@ export default function Home() {
         const data = await sessionRes.json() as { is_logged_in: boolean; username?: string; avatar_url?: string };
         if (data.is_logged_in && data.username) {
           sess = { username: data.username, avatar_url: data.avatar_url ?? "" };
+          localStorage.removeItem('nd_logged_out');
           setSession(sess);
         }
       }
@@ -1633,7 +1652,7 @@ export default function Home() {
             <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Sync */}
               <button
-                onClick={async () => { await syncFromDiscogs(session?.username); await fetchPlays(); setProfileOpen(false); }}
+                onClick={async () => { await syncFromDiscogs(session?.username); try { await fetchPlays(); } finally { setProfileOpen(false); } }}
                 disabled={syncing}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
@@ -1654,13 +1673,20 @@ export default function Home() {
               </button>
 
               {/* Sign out */}
-              <a
-                href="/api/auth/logout"
+              <button
+                onClick={() => {
+                  // Set the logout flag before clearing the token so the mount effect
+                  // on the next load can detect that logout was intentional and skip
+                  // the env-var-fallback session check (mobile/WebView only).
+                  localStorage.setItem('nd_logged_out', '1');
+                  localStorage.removeItem('nd_bearer_token');
+                  window.location.href = '/api/auth/logout';
+                }}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
                   borderRadius: 14, padding: "14px 18px",
-                  textDecoration: "none",
+                  cursor: "pointer", width: "100%", textAlign: "left",
                 }}
               >
                 <span style={{ color: "#9a8055", fontSize: 16, lineHeight: 1 }}>↩</span>
@@ -1672,7 +1698,7 @@ export default function Home() {
                     Discogs account
                   </p>
                 </div>
-              </a>
+              </button>
             </div>
           </div>
         </>
