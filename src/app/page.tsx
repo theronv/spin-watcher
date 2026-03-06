@@ -341,7 +341,10 @@ export default function Home() {
 
   const fetchPlays = useCallback(async () => {
     const res = await apiFetch("/api/plays");
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.error("fetchPlays failed:", res.status, await res.text().catch(() => ""));
+      return;
+    }
     const data: PlayData[] = await res.json();
     const map: Record<string, PlayData> = {};
     data.forEach(p => { map[p.discogs_id] = p; });
@@ -613,7 +616,10 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ discogs_id }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.error("markPlaying POST failed:", res.status, await res.text().catch(() => ""));
+      return;
+    }
     // Confirm with actual DB value (handles concurrent plays from other sessions).
     const { play_count, last_played } = await res.json();
     setPlays(prev => ({ ...prev, [discogs_id]: { discogs_id, play_count, last_played } }));
