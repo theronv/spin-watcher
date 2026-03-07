@@ -256,7 +256,7 @@ Required because Discogs images block cross-origin requests. Response cached 7 d
 
 ## Frontend (Next.js)
 
-`src/app/page.tsx` is a single-page React app (~1,435 lines) with two modes.
+`src/app/page.tsx` is a single-page React app (~1,700 lines) with two modes.
 
 ### Data Loading Sequence
 
@@ -291,7 +291,7 @@ Two sub-states controlled by `isPlaying: boolean`:
 - "Mark as Playing" button → logs play via `POST /api/plays`, sets `isPlaying = true`
 
 **Playing view** (`isPlaying = true`)
-- Spinning vinyl animation (4s CSS rotation)
+- Spinning vinyl disc (driven by `requestAnimationFrame` writing directly to `element.style.transform` — not a CSS animation)
 - Animated waveform bars (16 bars, 0.5–0.95s staggered durations)
 - "STOP" button → clears `nowPlayingId`, returns to browse
 
@@ -347,129 +347,64 @@ Error page is injected via `loadHTMLString` if the server URL is unreachable.
 
 The web app navigates to `/api/auth/discogs?redirect_uri=needledrop://`. After Discogs authorizes, the server redirects to `needledrop://?token=<signed-token>`.
 
-**Critical gap:** The `needledrop://` URL scheme is not yet registered in `project.yml`, and `NeedleDropApp.swift` has no `.onOpenURL` handler to capture the token. See [Known Issues](#known-issues--pre-release-checklist).
+The `needledrop://` URL scheme is registered in `project.yml` under `CFBundleURLTypes`. `NeedleDropApp.swift` handles it via `.onOpenURL`, extracting the token from the query string and storing it in `@State var pendingToken`. `ContentView` passes this binding to `WebView`, which navigates to `https://needle-drop.com/?nd_token=<token>` on the next `updateUIView` call. `page.tsx` reads `?nd_token=` on mount, stores it in `localStorage` as `nd_bearer_token`, and strips the URL.
 
 ---
 
 ## Known Issues & Pre-Release Checklist
 
-### Blockers for App Store Submission
+### Resolved (previously blocking)
 
-#### 1. iOS server URL hardcoded to local dev IP
+The following were blockers for App Store submission and have been fixed:
 
-**File:** `ios/Sources/App/ContentView.swift:7`
-```swift
-private let serverURL = "http://192.168.68.87:3000"   // ← MUST CHANGE
-```
-**Fix:** Change to `https://needle-drop.com` before building the release IPA.
-
----
-
-#### 2. `needledrop://` URL scheme not registered
-
-The OAuth callback redirects to `needledrop://?token=...`, but `project.yml` has no `CFBundleURLTypes` entry. iOS will not route this URL back to the app.
-
-**Fix:** Add to `project.yml` under `targets.NeedleDrop.info.properties`:
-```yaml
-CFBundleURLTypes:
-  - CFBundleURLSchemes:
-      - needledrop
-    CFBundleURLName: com.needledrop.app
-```
-Then add an `.onOpenURL` handler in `NeedleDropApp.swift` to receive the token and inject it into the WebView's JavaScript context (e.g., `window.postMessage`), or store it in `UserDefaults` / Keychain so the WebView JS can read it via a custom `WKScriptMessageHandler`.
+1. **iOS server URL** — `ContentView.swift` now points to `https://needle-drop.com`. ✓
+2. **`needledrop://` URL scheme** — registered in `project.yml` under `CFBundleURLTypes`. ✓
+3. **Deep-link handler** — `NeedleDropApp.swift` has a full `.onOpenURL` handler that extracts the Bearer token and passes it to the WebView via `@State var pendingToken`. ✓
+4. **ATS / `NSAllowsArbitraryLoads`** — removed. `project.yml` uses `NSAllowsLocalNetworking` and domain-specific exceptions for `needle-drop.com`, `api.discogs.com`, `img.discogs.com`, and `i.discogs.com`. ✓
+5. **`SESSION_SECRET` in `.env.example`** — added with generation instructions. ✓
 
 ---
 
-#### 3. No deep-link handler in the Swift layer
+### Open Issues
 
-Even after registering the URL scheme, `NeedleDropApp.swift` has no handler. The token from the OAuth redirect will be swallowed.
+#### 1. Verify `SESSION_SECRET` is set in Vercel env vars
 
-**Minimal fix pattern:**
-```swift
-WindowGroup {
-    ContentView()
-        .ignoresSafeArea()
-        .onOpenURL { url in
-            // Extract token from url.query, pass to WebView via JS bridge
-        }
-}
-```
-
----
-
-#### 4. `NSAllowsArbitraryLoads: true` will fail App Store review
-
-**File:** `ios/project.yml:37`
-
-Apple App Store review flags `NSAllowsArbitraryLoads: true`. Replace with domain-specific exceptions:
-```yaml
-NSAppTransportSecurity:
-  NSAllowsLocalNetworking: true
-  NSExceptionDomains:
-    needle-drop.com:
-      NSIncludesSubdomains: true
-      NSExceptionAllowsInsecureHTTPLoads: false
-      NSExceptionRequiresForwardSecrecy: false
-    api.discogs.com:
-      NSIncludesSubdomains: true
-      NSExceptionRequiresForwardSecrecy: false
-    img.discogs.com:
-      NSIncludesSubdomains: true
-      NSExceptionRequiresForwardSecrecy: false
-```
-
----
-
-#### 5. `SESSION_SECRET` missing from `.env.example`
-
-Mobile Bearer token signing will silently fail if this is unset (Node.js `process.env.SESSION_SECRET!` will be `undefined`, causing `createHmac` to throw or produce garbage).
-
-**Fix:** Add to `.env.example`:
-```
-# Required for mobile Bearer token signing (generate: openssl rand -hex 32)
-SESSION_SECRET=
-```
-And verify it's set in Vercel environment variables.
-
----
-
-#### 6. `SESSION_SECRET` missing from Vercel env vars
-
-Double-check the Vercel project dashboard. If `SESSION_SECRET` is not set in production, all iOS logins will fail.
+Double-check the Vercel project dashboard. If `SESSION_SECRET` is not set in production, all iOS logins will fail silently — `process.env.SESSION_SECRET!` will be `undefined`, causing `createHmac` to throw.
 
 ---
 
 ### Non-Blocking but Recommended
 
-#### 7. Turso URL hardcoded in `src/lib/db.ts`
+#### 2. Turso URL hardcoded in `src/lib/db.ts`
 
-Move to `TURSO_URL` env var for better operational flexibility.
+Move to `TURSO_URL` env var for better operational flexibility (and before open-sourcing).
 
-#### 8. Bearer tokens never expire
+#### 3. Bearer tokens never expire
 
 The signed token has an `iat` field but no `exp`. A compromised token is valid forever until `SESSION_SECRET` is rotated. Add an `exp` claim (e.g., 90 days) and handle `401` responses in the WebView JS by re-initiating OAuth.
 
-#### 9. PATCH `/api/plays` `last_played` is inaccurate
+#### 4. PATCH `/api/plays` `last_played` is inaccurate
 
-When overwriting a count via PATCH, the response returns `new Date().toISOString()` (server time), but no real `played_at` rows are inserted with accurate timestamps — they all get `CURRENT_TIMESTAMP` at insert time (same moment). This is fine for UX, but worth noting.
+When overwriting a count via PATCH, the response returns `new Date().toISOString()` (server time), but all inserted play rows share the same `CURRENT_TIMESTAMP` at insert time. Fine for UX, but not a real per-play timestamp.
 
-#### 10. iPad-only, but orientation is unrestricted
+#### 5. iPad layout on smaller iPads
 
-`TARGETED_DEVICE_FAMILY: "2"` means iPad-only. All four orientations are supported. No issues here, just confirm the web app layout looks correct in portrait on smaller iPads (iPad mini).
+`TARGETED_DEVICE_FAMILY: "2"` means iPad-only. All four orientations are supported. Confirm the web app layout looks correct in portrait on iPad mini before submitting.
 
 ---
 
 ### Pre-Release Checklist
 
-- [ ] Change `serverURL` in `ContentView.swift` to `https://needle-drop.com`
-- [ ] Register `needledrop://` URL scheme in `project.yml`
-- [ ] Add `.onOpenURL` handler in `NeedleDropApp.swift` to capture OAuth token
-- [ ] Implement JS bridge to pass token from native → WebView
-- [ ] Remove `NSAllowsArbitraryLoads: true`; add domain-specific exceptions
-- [ ] Add `SESSION_SECRET` to `.env.example`
-- [ ] Verify `SESSION_SECRET` is set in Vercel production env vars
-- [ ] Verify Discogs OAuth app callback URL is set to `https://needle-drop.com/api/auth/discogs/callback`
-- [ ] Set `CFBundleShortVersionString` and `CFBundleVersion` to release values in `project.yml`
+- [x] `serverURL` in `ContentView.swift` = `https://needle-drop.com`
+- [x] `needledrop://` URL scheme registered in `project.yml`
+- [x] `.onOpenURL` handler in `NeedleDropApp.swift` captures OAuth token
+- [x] Token passed from native → WebView via `pendingToken` binding → `?nd_token=` URL param
+- [x] `NSAllowsArbitraryLoads` removed; domain-specific ATS exceptions in place
+- [x] `SESSION_SECRET` added to `.env.example`
+- [x] `CFBundleVersion` bumped to `3` in `project.yml` (accounts for sessions 2–4 changes)
+- [x] `xcodebuild archive` succeeds — IPA at `/tmp/NeedleDrop.xcarchive`
+- [ ] Verify `SESSION_SECRET` is set in Vercel production env vars (check Vercel dashboard)
+- [ ] Verify Discogs OAuth app callback URL is set to `https://needle-drop.com/api/auth/discogs/callback` (check discogs.com/settings/developers)
 - [ ] Test full OAuth flow on a physical iPad (device, not simulator) against production URL
 - [ ] Test sync, play count increment, and play count edit end-to-end on iPad
-- [ ] Run `xcodebuild archive` and validate the IPA in TestFlight before submitting
+- [ ] Distribute IPA via Xcode Organizer → TestFlight & App Store Connect

@@ -263,9 +263,8 @@ Tapping the avatar in the top-right header opens a bottom sheet (`profileOpen` s
 - Record count
 - Last sync timestamp (read from `localStorage.getItem('last_sync_at_{username}')`)
 - Sync Collection button (calls `syncFromDiscogs` + `fetchPlays`, then closes sheet)
-- Sign Out link (`/api/auth/logout`)
 
-The standalone sync button and "OUT" link were removed from the header — sync/sign-out live only in the profile sheet.
+There is no Sign Out button. Logout does not work reliably on iOS WebView: mobile auth is Bearer-token-only (no `discogs_session` cookie), and the `DISCOGS_TOKEN`/`DISCOGS_USER` env-var fallback in `session/route.ts` re-authenticates the user on every reload regardless. The `/api/auth/logout` route still exists but has no UI entrypoint.
 
 ### Data Flow on Mount
 
@@ -291,12 +290,14 @@ The standalone sync button and "OUT" link were removed from the header — sync/
 2. `discogs_session` httpOnly cookie (web)
 3. Returns null (fallback to env var happens in individual routes, not in getSession)
 
-**Gotcha:** Demo mode (`DISCOGS_TOKEN` + `DISCOGS_USER`) is only checked in `session/route.ts` and `sync/route.ts`, NOT in `getSession()`. Other protected routes will return 401 in demo mode unless the env token is used differently.
+**Note:** Demo mode (`DISCOGS_TOKEN` + `DISCOGS_USER`) fallback is handled via `resolveSession()` helpers in each route that needs it — currently `session/route.ts`, `sync/route.ts`, and `plays/route.ts`. `getSession()` itself does NOT include the env fallback; routes that require it call `resolveSession()` instead.
 
 ### Sync — Don't Drop Play Data
 `/api/sync` uses `ON CONFLICT(username, discogs_id) DO UPDATE SET ...` — it only updates metadata columns, never touches `plays`. The play history is preserved across all syncs.
 
-### Plays — PATCH Uses Recursive CTE
+### Plays — Auth + PATCH Behaviour
+All three plays handlers (GET, POST, PATCH) use a local `resolveSession()` helper that mirrors `session/route.ts` — it calls `getSession()` first, then falls back to the `DISCOGS_TOKEN`/`DISCOGS_USER` env vars. This keeps plays auth in sync with session auth so plays never return 401 when the session check would have succeeded.
+
 PATCH `/api/plays` deletes all existing play rows then re-inserts N rows using:
 ```sql
 WITH RECURSIVE counter(i) AS (
@@ -392,7 +393,7 @@ After editing `project.yml`, always run `xcodegen generate` — the `.xcodeproj`
 - [ ] `xcodegen generate` run after any `project.yml` changes
 - [ ] Archive succeeds with no errors (`xcodebuild ... archive`)
 - [ ] Distribute via Xcode Organizer → TestFlight & App Store Connect → Automatic signing
-- [ ] Test OAuth on physical iPad (not simulator): login → sync → play count → logout
+- [ ] Test OAuth on physical iPad (not simulator): login → sync → play count
 
 ---
 
