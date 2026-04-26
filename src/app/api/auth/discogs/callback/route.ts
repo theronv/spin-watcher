@@ -20,26 +20,25 @@ function makeOAuth() {
 }
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
 
   const oauthToken    = searchParams.get('oauth_token');
   const oauthVerifier = searchParams.get('oauth_verifier');
 
   if (!oauthToken || !oauthVerifier) {
-    return NextResponse.redirect(`${origin}/?auth_error=missing_params`);
+    return NextResponse.json({ error: 'missing_params' }, { status: 400 });
   }
 
-  // Retrieve the request token secret from the short-lived cookie
   const cookieStore = await cookies();
-  const requestSecret = cookieStore.get('discogs_request_secret')?.value;
+  const requestSecret  = cookieStore.get('discogs_request_secret')?.value;
+  const mobileRedirect = cookieStore.get('discogs_redirect_uri')?.value ?? '';
 
   if (!requestSecret) {
-    return NextResponse.redirect(`${origin}/?auth_error=session_expired`);
+    return NextResponse.json({ error: 'session_expired' }, { status: 400 });
   }
 
   const oauth = makeOAuth();
 
-  // Exchange request token + verifier for access token
   const accessTokenData = {
     url: 'https://api.discogs.com/oauth/access_token',
     method: 'POST',
@@ -61,7 +60,7 @@ export async function GET(request: Request) {
 
   if (!accessRes.ok) {
     console.error('Discogs access_token failed:', accessRes.status);
-    return NextResponse.redirect(`${origin}/?auth_error=token_exchange`);
+    return NextResponse.json({ error: 'token_exchange_failed' }, { status: 502 });
   }
 
   const accessText   = await accessRes.text();
@@ -70,10 +69,9 @@ export async function GET(request: Request) {
   const accessTokenSecret = accessParams.get('oauth_token_secret');
 
   if (!accessToken || !accessTokenSecret) {
-    return NextResponse.redirect(`${origin}/?auth_error=missing_access_token`);
+    return NextResponse.json({ error: 'missing_access_token' }, { status: 502 });
   }
 
-  // Fetch user identity
   const identityReq    = { url: 'https://api.discogs.com/oauth/identity', method: 'GET' };
   const accessTok      = { key: accessToken, secret: accessTokenSecret };
   const identityHeader = oauth.toHeader(oauth.authorize(identityReq, accessTok));
@@ -92,30 +90,13 @@ export async function GET(request: Request) {
   }
 
   const sessionData = { username, avatar_url, access_token: accessToken, access_token_secret: accessTokenSecret };
+  const mobileToken = createMobileToken(sessionData);
 
-  // Check whether this was initiated by the mobile app
-  const mobileRedirect = cookieStore.get('discogs_redirect_uri')?.value ?? '';
+  const res = mobileRedirect.startsWith('needledrop://')
+    ? NextResponse.redirect(`${mobileRedirect}?token=${encodeURIComponent(mobileToken)}`)
+    : NextResponse.json({ token: mobileToken });
 
-  if (mobileRedirect.startsWith('needledrop://')) {
-    // Mobile flow: embed a signed token in the deep-link redirect
-    const token = createMobileToken(sessionData);
-    const redirect = NextResponse.redirect(`${mobileRedirect}?token=${encodeURIComponent(token)}`);
-    redirect.cookies.delete('discogs_request_secret');
-    redirect.cookies.delete('discogs_redirect_uri');
-    return redirect;
-  }
-
-  // Web flow: set an httpOnly session cookie (30 days)
-  const redirect = NextResponse.redirect(`${origin}/`);
-  redirect.cookies.delete('discogs_request_secret');
-  redirect.cookies.delete('discogs_redirect_uri');
-  redirect.cookies.set('discogs_session', JSON.stringify(sessionData), {
-    httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge:   60 * 60 * 24 * 30,
-    path:     '/',
-  });
-
-  return redirect;
+  res.cookies.delete('discogs_request_secret');
+  res.cookies.delete('discogs_redirect_uri');
+  return res;
 }

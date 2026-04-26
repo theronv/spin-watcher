@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import { createHmac } from 'crypto';
 
 export interface SessionData {
@@ -35,8 +34,8 @@ export function verifyMobileToken(token: string): SessionData | null {
   const payload = token.slice(0, dot);
   const sig     = token.slice(dot + 1);
   const secret  = process.env.SESSION_SECRET!;
-  const expectedSig = createHmac('sha256', secret).update(payload).digest('base64url');
-  if (sig !== expectedSig) return null;
+  const expected = createHmac('sha256', secret).update(payload).digest('base64url');
+  if (sig !== expected) return null;
   try {
     const data = JSON.parse(b64urlDecode(payload)) as {
       u?: string; a?: string; t?: string; s?: string; iat?: number;
@@ -53,25 +52,8 @@ export function verifyMobileToken(token: string): SessionData | null {
   }
 }
 
-export async function getSession(request?: Request): Promise<SessionData | null> {
-  // 1. Check Authorization: Bearer <mobile-token>
-  if (request) {
-    const auth = request.headers.get('Authorization');
-    if (auth?.startsWith('Bearer ')) {
-      const session = verifyMobileToken(auth.slice(7));
-      if (session) return session;
-    }
-  }
-
-  // 2. Fall back to httpOnly cookie (web)
-  const cookieStore = await cookies();
-  const raw = cookieStore.get('discogs_session')?.value;
-  if (!raw) return null;
-  try {
-    const data = JSON.parse(raw) as Partial<SessionData>;
-    if (!data.username || !data.access_token || !data.access_token_secret) return null;
-    return data as SessionData;
-  } catch {
-    return null;
-  }
+export async function getSession(request: Request): Promise<SessionData | null> {
+  const auth = request.headers.get('Authorization');
+  if (!auth?.startsWith('Bearer ')) return null;
+  return verifyMobileToken(auth.slice(7));
 }
