@@ -42,13 +42,11 @@ function buildHeaders(
 export async function GET(request: Request) {
   const session = await getSession(request);
 
-  // Resolve username: OAuth session first, env var fallback for demo/single-user mode
-  const envUser  = (process.env.DISCOGS_USER ?? '').replace(/[\u201C\u201D"]/g, '').trim();
-  const username = session?.username ?? (envUser || null);
-
-  if (!username) {
+  if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const username = session.username;
 
   const allItems: Record<string, unknown>[] = [];
   let page       = 1;

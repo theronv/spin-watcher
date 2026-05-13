@@ -4,20 +4,8 @@ import { getSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-async function resolveSession(request: Request) {
-  let session = await getSession(request);
-  if (!session) {
-    const envToken = process.env.DISCOGS_TOKEN;
-    const envUser  = (process.env.DISCOGS_USER ?? '').replace(/[“”"]/g, '').trim();
-    if (envToken && envUser) {
-      session = { username: envUser, avatar_url: '', access_token: '', access_token_secret: '' };
-    }
-  }
-  return session;
-}
-
 export async function GET(request: Request) {
-  const session = await resolveSession(request);
+  const session = await getSession(request);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const result = await db.execute({
