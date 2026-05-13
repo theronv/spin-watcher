@@ -1,20 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-function parseDuration(duration: string): number {
-  if (!duration) return 0;
-  const parts = duration.split(':').map(Number);
-  if (parts.length === 2) return (parts[0] || 0) * 60 + (parts[1] || 0);
-  if (parts.length === 3) return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
-  return 0;
-}
-
-function formatRuntime(totalSeconds: number): string {
-  if (totalSeconds <= 0) return '';
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -48,8 +33,6 @@ export async function GET(
       duration: String(t.duration ?? ''),
     }));
 
-  const totalSeconds = tracklist.reduce((sum, t) => sum + parseDuration(t.duration), 0);
-
   const labels = (data.labels as Array<{ name: string }>) ?? [];
   const label  = labels[0]?.name ?? null;
 
@@ -60,7 +43,6 @@ export async function GET(
       genres:    (data.genres  as string[]) ?? [],
       styles:    (data.styles  as string[]) ?? [],
       tracklist,
-      runtime:   formatRuntime(totalSeconds),
     },
     {
       headers: {

@@ -9,7 +9,6 @@ interface NowPlayingContextValue {
   nowPlaying:      AlbumRecord | null;
   isPlaying:       boolean;
   playCounts:      Record<string, number>;
-  isLoggingPlay:   boolean;
   queue:           AlbumRecord[];
   playRecord:      (record: AlbumRecord) => void;
   stopPlaying:     () => void;
@@ -47,10 +46,9 @@ function loadQueue(): AlbumRecord[] {
 
 export function NowPlayingProvider({ children }: { children: React.ReactNode }) {
   const [nowPlaying,    setNowPlaying]    = useState<AlbumRecord | null>(null);
-  const [isPlaying,     setIsPlaying]     = useState(false);
-  const [playCounts,    setPlayCounts]    = useState<Record<string, number>>({});
-  const [isLoggingPlay, setIsLoggingPlay] = useState(false);
-  const [queue,         setQueue]         = useState<AlbumRecord[]>([]);
+  const [isPlaying,  setIsPlaying]  = useState(false);
+  const [playCounts, setPlayCounts] = useState<Record<string, number>>({});
+  const [queue,      setQueue]      = useState<AlbumRecord[]>([]);
   const queueRef = useRef<AlbumRecord[]>([]);
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
@@ -78,16 +76,13 @@ export function NowPlayingProvider({ children }: { children: React.ReactNode }) 
     // Optimistic increment
     setPlayCounts(prev => ({ ...prev, [record.id]: (prev[record.id] ?? 0) + 1 }));
 
-    setIsLoggingPlay(true);
     api.logPlay(record.id)
       .then(res => {
         setPlayCounts(prev => ({ ...prev, [res.discogs_id]: res.play_count }));
       })
       .catch(() => {
-        // Rollback
         setPlayCounts(prev => ({ ...prev, [record.id]: Math.max((prev[record.id] ?? 1) - 1, 0) }));
-      })
-      .finally(() => setIsLoggingPlay(false));
+      });
   }, []);
 
   const stopPlaying = useCallback(() => {
@@ -150,7 +145,7 @@ export function NowPlayingProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <NowPlayingContext.Provider value={{
-      nowPlaying, isPlaying, playCounts, isLoggingPlay, queue,
+      nowPlaying, isPlaying, playCounts, queue,
       playRecord, stopPlaying, updatePlayCount, getPlayCount, fetchPlayCounts,
       addToQueue, removeFromQueue, reorderQueue, playNext, clearQueue,
     }}>

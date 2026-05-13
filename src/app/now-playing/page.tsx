@@ -67,10 +67,6 @@ export default function NowPlayingPage() {
     router.back();
   };
 
-  const handleNext = () => {
-    playNext();
-  };
-
   const handleStartEdit = () => {
     setEditCount(String(playCount));
     setIsEditingCount(true);
@@ -305,7 +301,7 @@ export default function NowPlayingPage() {
           </button>
           {queue.length > 0 && (
             <button
-              onClick={handleNext}
+              onClick={playNext}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 fontFamily: 'var(--font-playfair, serif)', fontSize: 15, fontWeight: 700,

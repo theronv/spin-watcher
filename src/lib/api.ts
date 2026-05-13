@@ -82,10 +82,6 @@ export const api = {
     return { user: data.user ?? null };
   },
 
-  async logout(): Promise<void> {
-    await fetch('/api/auth/logout');
-  },
-
   async init(): Promise<void> {
     await apiFetch<void>('/api/init');
   },
