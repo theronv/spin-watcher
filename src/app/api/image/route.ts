@@ -5,8 +5,20 @@ import { getSession } from "@/lib/session";
 const ALLOWED_IMAGE_HOSTS = /^https:\/\/[a-z0-9-]+\.discogs\.com\//;
 const MAX_IMAGE_BYTES     = 5 * 1024 * 1024; // 5 MB
 
+async function resolveSession(request: Request) {
+  let session = await getSession(request);
+  if (!session) {
+    const envToken = process.env.DISCOGS_TOKEN;
+    const envUser  = (process.env.DISCOGS_USER ?? '').replace(/["""]/g, '').trim();
+    if (envToken && envUser) {
+      session = { username: envUser, avatar_url: '', access_token: '', access_token_secret: '' };
+    }
+  }
+  return session;
+}
+
 export async function GET(req: NextRequest) {
-  const session = await getSession(req);
+  const session = await resolveSession(req);
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const { searchParams } = new URL(req.url);
