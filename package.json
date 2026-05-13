@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",
-    "next": "16.1.6",
+    "next": "^16.2.6",
     "oauth-1.0a": "^2.2.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -21,7 +21,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "^16.2.6",
     "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": ">=8.5.10"
   }
 }

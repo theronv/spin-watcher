@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     allItems.push(...(data.releases as Record<string, unknown>[]));
     totalPages = (data.pagination as { pages: number }).pages;
     page++;
-  } while (page <= totalPages);
+  } while (page <= totalPages && page <= 200);
 
   const releases = allItems.map((item) => {
     const info    = item.basic_information as Record<string, unknown>;

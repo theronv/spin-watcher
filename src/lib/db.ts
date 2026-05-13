@@ -1,7 +1,7 @@
 import { createClient, type ResultSet } from '@libsql/client';
 
 export const db = createClient({
-  url: 'libsql://spin-watcher-theronv.aws-us-west-2.turso.io',
+  url: process.env.TURSO_DB_URL ?? 'libsql://spin-watcher-theronv.aws-us-west-2.turso.io',
   authToken: process.env.TURSO_AUTH_TOKEN!,
 });
 

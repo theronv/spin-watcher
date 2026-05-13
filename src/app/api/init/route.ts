@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { db, toRows } from '@/lib/db';
+import { getSession } from '@/lib/session';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const session = await getSession(request);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // ── Create tables (current multi-tenant schema for new installations) ────────
 
@@ -30,6 +33,10 @@ export async function GET() {
       discogs_id TEXT NOT NULL,
       played_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS plays_username_discogs_idx ON plays (username, discogs_id)
   `);
 
   await db.execute(`

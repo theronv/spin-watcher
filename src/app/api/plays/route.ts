@@ -46,6 +46,12 @@ export async function POST(req: NextRequest) {
   const { discogs_id } = await req.json();
   if (!discogs_id) return NextResponse.json({ error: 'Missing discogs_id' }, { status: 400 });
 
+  const owns = await db.execute({
+    sql:  'SELECT 1 FROM records WHERE username = ? AND discogs_id = ?',
+    args: [session.username, String(discogs_id)],
+  });
+  if (owns.rows.length === 0) return NextResponse.json({ error: 'Record not found' }, { status: 404 });
+
   await db.execute({
     sql:  'INSERT INTO plays (username, discogs_id) VALUES (?, ?)',
     args: [session.username, String(discogs_id)],
@@ -76,6 +82,12 @@ export async function PATCH(req: NextRequest) {
 
   const { discogs_id, count } = await req.json();
   if (!discogs_id) return NextResponse.json({ error: 'Missing discogs_id' }, { status: 400 });
+
+  const ownsP = await db.execute({
+    sql:  'SELECT 1 FROM records WHERE username = ? AND discogs_id = ?',
+    args: [session.username, String(discogs_id)],
+  });
+  if (ownsP.rows.length === 0) return NextResponse.json({ error: 'Record not found' }, { status: 404 });
 
   const n = Math.max(0, Math.min(9999, Math.floor(Number(count) || 0)));
 

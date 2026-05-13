@@ -5,6 +5,22 @@ import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+// Per-instance best-effort rate limit: 5 OAuth initiations per IP per 60 s.
+// Not globally enforced across serverless instances, but prevents burst abuse.
+const _rl = new Map<string, { n: number; reset: number }>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = _rl.get(ip);
+  if (!entry || entry.reset < now) {
+    _rl.set(ip, { n: 1, reset: now + 60_000 });
+    return false;
+  }
+  if (entry.n >= 5) return true;
+  entry.n++;
+  return false;
+}
+
 function makeOAuth() {
   return new OAuth({
     consumer: {
@@ -19,6 +35,11 @@ function makeOAuth() {
 }
 
 export async function GET(request: Request) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  if (isRateLimited(ip)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const consumerKey    = process.env.DISCOGS_CONSUMER_KEY;
   const consumerSecret = process.env.DISCOGS_CONSUMER_SECRET;
 

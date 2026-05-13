@@ -43,16 +43,12 @@ targets:
             needle-drop.com:
               NSIncludesSubdomains: true
               NSExceptionAllowsInsecureHTTPLoads: false
-              NSExceptionRequiresForwardSecrecy: false
             api.discogs.com:
               NSIncludesSubdomains: true
-              NSExceptionRequiresForwardSecrecy: false
             img.discogs.com:
               NSIncludesSubdomains: true
-              NSExceptionRequiresForwardSecrecy: false
             i.discogs.com:
               NSIncludesSubdomains: true
-              NSExceptionRequiresForwardSecrecy: false
         UIRequiresFullScreen: false
     settings:
       base:
