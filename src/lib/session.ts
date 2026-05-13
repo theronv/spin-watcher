@@ -53,7 +53,18 @@ export function verifyMobileToken(token: string): SessionData | null {
 }
 
 export async function getSession(request: Request): Promise<SessionData | null> {
+  // Bearer token (iOS / mobile)
   const auth = request.headers.get('Authorization');
-  if (!auth?.startsWith('Bearer ')) return null;
-  return verifyMobileToken(auth.slice(7));
+  if (auth?.startsWith('Bearer ')) {
+    return verifyMobileToken(auth.slice(7));
+  }
+
+  // Cookie-based session (web browser)
+  const cookieHeader = request.headers.get('Cookie') ?? '';
+  const match = /(?:^|;\s*)discogs_session=([^;]+)/.exec(cookieHeader);
+  if (match) {
+    return verifyMobileToken(decodeURIComponent(match[1]));
+  }
+
+  return null;
 }

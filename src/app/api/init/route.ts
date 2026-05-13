@@ -32,6 +32,15 @@ export async function GET() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS oauth_state (
+      nonce      TEXT PRIMARY KEY,
+      secret     TEXT NOT NULL,
+      redirect   TEXT NOT NULL DEFAULT '',
+      created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    )
+  `);
+
   // ── Migration: records — add username + change unique constraint ─────────────
   //
   // SQLite cannot ALTER a UNIQUE constraint in-place. The old schema had

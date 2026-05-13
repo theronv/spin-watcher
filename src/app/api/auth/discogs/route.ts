@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import OAuth from 'oauth-1.0a';
-import { createHmac } from 'crypto';
+import { createHmac, randomBytes } from 'crypto';
+import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 function makeOAuth() {
   return new OAuth({
     consumer: {
-      key: process.env.DISCOGS_CONSUMER_KEY!,
+      key:    process.env.DISCOGS_CONSUMER_KEY!,
       secret: process.env.DISCOGS_CONSUMER_SECRET!,
     },
     signature_method: 'HMAC-SHA1',
@@ -30,15 +31,20 @@ export async function GET(request: Request) {
 
   const { origin, searchParams } = new URL(request.url);
   const redirectUri = searchParams.get('redirect_uri') ?? '';
-  const callbackUrl = `${origin}/api/auth/discogs/callback`;
+
+  // Generate a random nonce to use as the state parameter.
+  // We store the oauth_token_secret in the DB keyed by this nonce so it can
+  // be retrieved in the callback without relying on cookies (which Chrome drops
+  // on cross-origin redirects) or exposing the secret in the URL.
+  const nonce = randomBytes(16).toString('hex');
+  const callbackUrl = `${origin}/api/auth/discogs/callback?s=${nonce}`;
 
   const oauth = makeOAuth();
 
-  // Include oauth_callback in the signed parameters
   const requestTokenData = {
-    url: 'https://api.discogs.com/oauth/request_token',
+    url:    'https://api.discogs.com/oauth/request_token',
     method: 'POST',
-    data: { oauth_callback: callbackUrl },
+    data:   { oauth_callback: callbackUrl },
   };
 
   const authHeader = oauth.toHeader(oauth.authorize(requestTokenData));
@@ -48,7 +54,7 @@ export async function GET(request: Request) {
     headers: {
       ...authHeader,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'NeedleDrop/2.0',
+      'User-Agent':   'NeedleDrop/2.0',
     },
     body: `oauth_callback=${encodeURIComponent(callbackUrl)}`,
   });
@@ -68,29 +74,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing token in Discogs response' }, { status: 502 });
   }
 
-  const redirect = NextResponse.redirect(
-    `https://www.discogs.com/oauth/authorize?oauth_token=${oauthToken}`
-  );
+  // Ensure the oauth_state table exists (may not yet if init hasn't been called).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS oauth_state (
+      nonce      TEXT PRIMARY KEY,
+      secret     TEXT NOT NULL,
+      redirect   TEXT NOT NULL DEFAULT '',
+      created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    )
+  `);
 
-  // Store request token secret temporarily so the callback can use it
-  redirect.cookies.set('discogs_request_secret', oauthTokenSecret, {
-    httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge:   600, // 10 minutes
-    path:     '/',
+  // Persist state: nonce → secret + redirect. Prune expired rows at the same time.
+  await db.execute({
+    sql: `DELETE FROM oauth_state WHERE created_at < strftime('%s', 'now') - 600`,
+    args: [],
+  });
+  await db.execute({
+    sql: `INSERT INTO oauth_state (nonce, secret, redirect) VALUES (?, ?, ?)`,
+    args: [nonce, oauthTokenSecret, redirectUri],
   });
 
-  // Store the mobile redirect URI so the callback knows where to send the token
-  if (redirectUri) {
-    redirect.cookies.set('discogs_redirect_uri', redirectUri, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge:   600,
-      path:     '/',
-    });
+  const discogsAuthUrl = `https://www.discogs.com/oauth/authorize?oauth_token=${oauthToken}`;
+
+  if (redirectUri.startsWith('needledrop://')) {
+    return NextResponse.redirect(discogsAuthUrl);
   }
 
-  return redirect;
+  return NextResponse.json({ authUrl: discogsAuthUrl });
 }

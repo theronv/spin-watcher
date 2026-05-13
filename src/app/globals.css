@@ -1,0 +1,96 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0c0a07;
+  --fg: #f5f0e8;
+  --gold: #C9A84C;
+  --gold-dim: #8A6E30;
+  --gold-glow: rgba(201, 168, 76, 0.15);
+  --surface: #1a1712;
+  --surface-high: #242018;
+  --border: #2A2418;
+  --border-light: #3A3020;
+  --text-muted: #C4B49A;
+  --text-dim: #8A7A60;
+}
+
+html { height: 100%; }
+
+body {
+  min-height: 100%;
+  background-color: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
+img { display: block; max-width: 100%; }
+
+.scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+@keyframes vinyl-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
+}
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.7; }
+}
+
+@keyframes waveform-bar {
+  0%, 100% { transform: scaleY(0.2); }
+  50%       { transform: scaleY(1); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.skeleton {
+  background: var(--surface);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.card-enter {
+  animation: card-enter 0.2s ease-out both;
+}
+
+/* Collection grid responsive columns */
+.collection-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 640px)  { .collection-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1024px) { .collection-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* Record detail responsive layout */
+@media (min-width: 768px) {
+  .record-layout      { display: flex !important; flex-direction: row !important; }
+  .record-art-panel   { width: 42% !important; position: sticky !important; top: 0 !important; height: 100dvh !important; overflow: hidden !important; }
+  .record-content-panel { flex: 1 !important; overflow-y: auto !important; }
+}
+
+.wave-bar {
+  width: 3px;
+  background: var(--gold);
+  border-radius: 2px;
+  transform-origin: bottom;
+  animation: waveform-bar 0.85s ease-in-out infinite alternate;
+}

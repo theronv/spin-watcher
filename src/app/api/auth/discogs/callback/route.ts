@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import OAuth from 'oauth-1.0a';
 import { createHmac } from 'crypto';
-import { cookies } from 'next/headers';
 import { createMobileToken } from '@/lib/session';
+import { db, toRows } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,18 +24,34 @@ export async function GET(request: Request) {
 
   const oauthToken    = searchParams.get('oauth_token');
   const oauthVerifier = searchParams.get('oauth_verifier');
+  const nonce         = searchParams.get('s');
 
   if (!oauthToken || !oauthVerifier) {
     return NextResponse.json({ error: 'missing_params' }, { status: 400 });
   }
 
-  const cookieStore = await cookies();
-  const requestSecret  = cookieStore.get('discogs_request_secret')?.value;
-  const mobileRedirect = cookieStore.get('discogs_redirect_uri')?.value ?? '';
+  if (!nonce) {
+    return NextResponse.json({ error: 'missing_state' }, { status: 400 });
+  }
 
-  if (!requestSecret) {
+  // Look up the request secret by nonce from the DB (set during initiation step).
+  // Enforce the 10-minute TTL.
+  const stateResult = await db.execute({
+    sql: `SELECT secret, redirect FROM oauth_state
+          WHERE nonce = ? AND created_at > strftime('%s', 'now') - 600`,
+    args: [nonce],
+  });
+  const [stateRow] = toRows(stateResult);
+
+  if (!stateRow) {
     return NextResponse.json({ error: 'session_expired' }, { status: 400 });
   }
+
+  const requestSecret  = stateRow.secret  as string;
+  const mobileRedirect = stateRow.redirect as string ?? '';
+
+  // Delete the used state row (one-time use).
+  await db.execute({ sql: `DELETE FROM oauth_state WHERE nonce = ?`, args: [nonce] });
 
   const oauth = makeOAuth();
 
@@ -92,11 +108,19 @@ export async function GET(request: Request) {
   const sessionData = { username, avatar_url, access_token: accessToken, access_token_secret: accessTokenSecret };
   const mobileToken = createMobileToken(sessionData);
 
-  const res = mobileRedirect.startsWith('needledrop://')
-    ? NextResponse.redirect(`${mobileRedirect}?token=${encodeURIComponent(mobileToken)}`)
-    : NextResponse.json({ token: mobileToken });
+  let res: NextResponse;
+  if (mobileRedirect.startsWith('needledrop://')) {
+    res = NextResponse.redirect(`${mobileRedirect}?token=${encodeURIComponent(mobileToken)}`);
+  } else {
+    res = NextResponse.redirect(new URL('/', new URL(request.url).origin));
+    res.cookies.set('discogs_session', mobileToken, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge:   60 * 60 * 24 * 30,
+      path:     '/',
+    });
+  }
 
-  res.cookies.delete('discogs_request_secret');
-  res.cookies.delete('discogs_redirect_uri');
   return res;
 }
